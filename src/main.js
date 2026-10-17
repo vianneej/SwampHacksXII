@@ -7,6 +7,7 @@ import doorUrl from '../assets/door.png';
 import treeUrl from '../assets/tree.png';
 import bushUrl from '../assets/bush.png';
 import brickUrl from '../assets/brick.png';
+import brickVerticalUrl from '../assets/brickvertical.png';
 import grassUrl from '../assets/grass.png';
 import countertopUrl from '../assets/countertop.png';
 import wallUpperUrl from '../assets/walls/wall_upper.png';
@@ -15,6 +16,14 @@ import frameLeftUrl from '../assets/walls/frame_left.png';
 import frameRightUrl from '../assets/walls/frame_right.png';
 import postUrl from '../assets/walls/post.png';
 import windowUrl from '../assets/window.png';
+import bookshelfLowUrl from '../assets/bookshelf.png';
+import bookshelfShortUrl from '../assets/shortbookshelf.png';
+import bookshelfTallUrl from '../assets/tallbookshelf.png';
+import flowerShelfUrl from '../assets/flowershelf.png';
+import cashRegisterUrl from '../assets/cashregister.png';
+import flowerPotsUrl from '../assets/flowerpots.png';
+import flowerPostUrl from '../assets/flowerpost.png';
+import flowerTentUrl from '../assets/flowertent.png';
 
 const canvas = document.getElementById('game');
 const screen = canvas.getContext('2d');
@@ -128,6 +137,7 @@ const GRASS_TILE = 128;
 const BRICK_TILE = 160;
 let grassPattern = null;
 let brickPattern = null;
+let brickVPattern = null;
 let wallUpperTile = null;
 let wallWainscotTile = null;
 const WALL_UPPER_H = 120;
@@ -156,6 +166,8 @@ function buildPatterns() {
   grassPattern = ctx.createPattern(makeTile(grassImage, g.sx, g.sy, g.size, g.size, GRASS_TILE, true), 'repeat');
   const b = frames.brick;
   brickPattern = ctx.createPattern(makeTile(b.img, b.sx, b.sy, b.sw, b.sh, BRICK_TILE, false), 'repeat');
+  const bv = frames.brickV;
+  brickVPattern = ctx.createPattern(makeTile(bv.img, bv.sx, bv.sy, bv.sw, bv.sh, BRICK_TILE, false), 'repeat');
   wallUpperTile = scaledTile(frames.wallUpper, 28, WALL_UPPER_H);
   wallWainscotTile = scaledTile(frames.wallWainscot, 32, WALL_WAINSCOT_H);
 }
@@ -176,9 +188,12 @@ function fillPattern(pattern, x, y, w, h) {
   ctx.fillRect(x, y, w, h);
 }
 
+const TURN = { y: 530, h: 130 };
+
 function drawPath() {
-  fillPattern(brickPattern, 1010, 0, 130, H);
   fillPattern(brickPattern, ROOM.x + ROOM.w - 4, OPENING.y, 1018 - ROOM.x - ROOM.w + 4, OPENING.h);
+  fillPattern(brickVPattern, 1010, 0, 130, TURN.y);
+  fillPattern(brickPattern, 1010, TURN.y, W - 1010, TURN.h);
 }
 
 function drawBush(cx, bottom, w) {
@@ -202,12 +217,11 @@ function drawOutdoors() {
   drawPath();
 
   drawBush(960, 640, 70);
-  drawBush(1180, H - 8, 90);
-  drawBush(1250, 580, 80);
+  drawBush(1150, H - 6, 70);
   drawTree(1205, 230, 210);
   drawTree(1205, 480, 210);
 
-  fillPattern(brickPattern, DOOR.x, ROOM.y + ROOM.h - 24, DOOR.w, H - ROOM.y - ROOM.h + 24);
+  fillPattern(brickVPattern, DOOR.x, ROOM.y + ROOM.h - 24, DOOR.w, H - ROOM.y - ROOM.h + 24);
 }
 
 function drawHedge() {
@@ -215,10 +229,7 @@ function drawHedge() {
   for (let x = 580; x < 900; x += 56) drawBush(x, H - 8, 64);
 }
 
-function drawFloor() {
-  const x0 = ROOM.x;
-  const x1 = ROOM.x + ROOM.w;
-  const y1 = ROOM.y + ROOM.h - 24;
+function drawFloor(x0 = ROOM.x, x1 = ROOM.x + ROOM.w, y1 = ROOM.y + ROOM.h - 24) {
   const rowH = 24;
   const boardW = 120;
   const tones = ['#b97a3e', '#c4844a', '#ad6f36', '#bb7c40'];
@@ -316,18 +327,214 @@ function drawBackCounter() {
   ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, x, bottom - h, w, h);
 }
 
+// ---- Library ----
+
+const LIB_BOTTOM = ROOM.y + ROOM.h - 24;
+const LIB_DOOR = { x: 570, w: 150 };
+const LIB_SHELF_BOTTOM = 206;
+const LIB_WALL_SHELF_SPECS = [
+  { frame: 'bookshelfTall', x: 40, h: 170 },
+  { frame: 'bookshelfShort', x: 165, h: 125 },
+  { frame: 'bookshelfTall', x: 345, h: 170 },
+  { frame: 'bookshelfTall', x: 815, h: 170 },
+  { frame: 'bookshelfShort', x: 940, h: 125 },
+  { frame: 'bookshelfTall', x: 1120, h: 170 },
+];
+let libWallShelves = [];
+
+const LIBRARY_ITEMS = [
+  { frame: 'bookshelfLow', x: 130, y: 300, h: 100 },
+  { frame: 'bookshelfShort', x: 545, y: 290, h: 125 },
+  { frame: 'bookshelfLow', x: 960, y: 300, h: 100 },
+  { s: 'bench', x: 570, y: 160, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'plant_large', x: 485, y: 120, ground: true },
+  { s: 'plant_large', x: 745, y: 120, ground: true },
+  { s: 'table_chairs_cup', x: 90, y: 480, ground: true },
+  { s: 'table_chairs_side', x: 290, y: 500, ground: true },
+  { s: 'table_chairs_three', x: 520, y: 470, ground: true },
+  { s: 'round_table_cups', x: 760, y: 490, ground: true },
+  { s: 'table_chair_back', x: 870, y: 460, ground: true },
+  { s: 'lounge', x: 1000, y: 500, ground: true },
+  { s: 'plant_large', x: 40, y: 330, ground: true },
+  { s: 'plant_large', x: 1185, y: 330, ground: true },
+  { s: 'plant_medium', x: 40, y: 560, ground: true },
+  { s: 'plant_flower', x: 850, y: 596, ground: true },
+];
+
+function frameSprite(name, h) {
+  const f = frames[name];
+  const w = Math.round(h * (f.sw / f.sh));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, 0, 0, w, h);
+  return { img: c, w, h };
+}
+
+function drawLibraryWalls() {
+  fillAt(wallUpperTile, 0, 0, W, WALL_UPPER_H);
+  fillAt(wallWainscotTile, 0, WALL_UPPER_H, W, WALL_WAINSCOT_H);
+  for (const [x0, x1] of [[0, LIB_DOOR.x], [LIB_DOOR.x + LIB_DOOR.w, W]]) {
+    fillAt(wallWainscotTile, x0, LIB_BOTTOM, x1 - x0, WALL_WAINSCOT_H);
+    rect(x0, LIB_BOTTOM, x1 - x0, 3, '#a86f38');
+  }
+  drawFrame(frames.frameLeft, 0, 0, FRAME_T, LIB_BOTTOM + WALL_WAINSCOT_H);
+  drawFrame(frames.frameRight, W - FRAME_T, 0, FRAME_T, LIB_BOTTOM + WALL_WAINSCOT_H);
+  drawFrame(frames.post, LIB_DOOR.x - 26, LIB_BOTTOM, 26, WALL_WAINSCOT_H);
+  drawFrame(frames.post, LIB_DOOR.x + LIB_DOOR.w, LIB_BOTTOM, 26, WALL_WAINSCOT_H);
+}
+
+function drawLibraryBackground() {
+  fillPattern(grassPattern, 0, 0, W, H);
+  drawFloor(24, W, LIB_BOTTOM);
+  fillPattern(brickVPattern, LIB_DOOR.x, LIB_BOTTOM, LIB_DOOR.w, H - LIB_BOTTOM);
+  drawLibraryWalls();
+
+  for (let x = LIB_DOOR.x - 32; x > 20; x -= 56) drawBush(x, H - 8, 64);
+  for (let x = LIB_DOOR.x + LIB_DOOR.w + 32; x < W - 20; x += 56) drawBush(x, H - 8, 64);
+
+  drawSprite('rug', 490, 515);
+
+  for (const sh of libWallShelves) ctx.drawImage(sh.img, sh.x, sh.y);
+
+  drawSprite('painting', 603, 62);
+}
+
+// ---- Flower shop ----
+
+const SHOP = { x: 240, w: 800, bottom: 390, door: { x: 565, w: 150 } };
+const SHOP_PLAZA_Y = 440;
+const SHOP_SHELF_BOTTOM = 206;
+const SHOP_WALL_SHELF_SPECS = [
+  { frame: 'flowerShelf', x: 282, h: 150 },
+  { frame: 'flowerShelf', x: 420, h: 150 },
+  { frame: 'flowerShelf', x: 720, h: 150 },
+  { frame: 'flowerShelf', x: 858, h: 150 },
+];
+let shopWallShelves = [];
+
+const SHOP_WALKABLE = [
+  { x0: -60, y0: TURN.y + 8, x1: 260, y1: TURN.y + TURN.h - 2 },
+  { x0: 250, y0: SHOP_PLAZA_Y + 6, x1: W - 16, y1: TURN.y + TURN.h - 4 },
+  { x0: SHOP.x + 30, y0: FLOOR_Y - 2, x1: SHOP.x + SHOP.w - 30, y1: SHOP.bottom - 4 },
+  { x0: SHOP.door.x + 8, y0: SHOP.bottom - 20, x1: SHOP.door.x + SHOP.door.w - 8, y1: SHOP_PLAZA_Y + 10 },
+];
+
+const SHOP_ITEMS = [
+  // inside
+  { frame: 'cashRegister', x: 300, y: 235, h: 100, hits: [[0.02, 0.5, 0.96, 0.5]] },
+  { frame: 'flowerPots', x: 860, y: 225, h: 120, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { frame: 'flowerPots', x: 395, y: 330, h: 90, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { s: 'plant_large', x: 290, y: 330, ground: true },
+  { s: 'plant_large', x: 960, y: 320, ground: true },
+  { s: 'plant_flower', x: 790, y: 330, ground: true },
+  // outside: tent, sign, pots, seating
+  { frame: 'flowerTent', x: 800, y: 365, h: 210, hits: [[0.03, 0.5, 0.94, 0.5]] },
+  { frame: 'flowerPost', x: 100, y: 310, h: 170, hits: [[0.02, 0.8, 0.25, 0.2]] },
+  { frame: 'flowerPots', x: 440, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { frame: 'flowerPots', x: 1090, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { s: 'table_chairs_cup', x: 290, y: 470, ground: true },
+  { s: 'round_table_cups', x: 285, y: 572, ground: true },
+  { s: 'table_chairs_side', x: 395, y: 570, ground: true },
+  { s: 'bench', x: 1060, y: 610, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 910, y: 610, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'plant_flower', x: 1200, y: 560, ground: true },
+];
+
+function drawShopBackground() {
+  const right = SHOP.x + SHOP.w;
+  const door = SHOP.door;
+  fillPattern(grassPattern, 0, 0, W, H);
+
+  // road from the left, plaza in front of the building
+  fillPattern(brickPattern, 0, TURN.y, 270, TURN.h);
+  fillPattern(brickPattern, 250, SHOP_PLAZA_Y, W - 250, TURN.y + TURN.h - SHOP_PLAZA_Y);
+  fillPattern(brickVPattern, door.x, SHOP.bottom, door.w, SHOP_PLAZA_Y - SHOP.bottom + 6);
+
+  drawTree(60, 290, 210);
+  drawTree(1170, 330, 210);
+  drawTree(1235, 200, 210);
+
+  // building: floor, back wall, front wall with a doorway, side frames
+  drawFloor(SHOP.x, right, SHOP.bottom);
+  fillAt(wallUpperTile, SHOP.x, 0, SHOP.w, WALL_UPPER_H);
+  fillAt(wallWainscotTile, SHOP.x, WALL_UPPER_H, SHOP.w, WALL_WAINSCOT_H);
+  for (const [x0, x1] of [[SHOP.x, door.x], [door.x + door.w, right]]) {
+    fillAt(wallWainscotTile, x0, SHOP.bottom, x1 - x0, WALL_WAINSCOT_H);
+    rect(x0, SHOP.bottom, x1 - x0, 3, '#a86f38');
+  }
+  drawFrame(frames.frameLeft, SHOP.x, 0, FRAME_T, SHOP.bottom + WALL_WAINSCOT_H);
+  drawFrame(frames.frameRight, right - FRAME_T, 0, FRAME_T, SHOP.bottom + WALL_WAINSCOT_H);
+  drawFrame(frames.post, door.x - 26, SHOP.bottom, 26, WALL_WAINSCOT_H);
+  drawFrame(frames.post, door.x + door.w, SHOP.bottom, 26, WALL_WAINSCOT_H);
+
+  const win = frames.window;
+  const winW = 70;
+  const winH = Math.round(winW * (win.sh / win.sw));
+  ctx.drawImage(win.img, win.sx, win.sy, win.sw, win.sh, 640 - winW / 2, 36, winW, winH);
+
+  for (const sh of shopWallShelves) ctx.drawImage(sh.img, sh.x, sh.y);
+
+  for (let x = 40; x < W; x += 80) drawBush(x, H - 2, 62);
+}
+
+// ---- Park ----
+
+const PARK_PATH_Y = { y: 310, h: 100 };
+const PARK_WALKABLE = [
+  { x0: DOOR.x + 8, y0: -60, x1: DOOR.x + DOOR.w - 8, y1: 160 },
+  { x0: 40, y0: 140, x1: W - 40, y1: H - 70 },
+];
+const PARK_TREE_HITS = [[0.4, 0.85, 0.2, 0.15]];
+const PARK_ITEMS = [
+  // top row of trees
+  { tree: true, cx: 90, bottom: 230, h: 220 },
+  { tree: true, cx: 270, bottom: 215, h: 200 },
+  { tree: true, cx: 700, bottom: 225, h: 220 },
+  { tree: true, cx: 940, bottom: 210, h: 200 },
+  { tree: true, cx: 1170, bottom: 230, h: 220 },
+  // bottom trees
+  { tree: true, cx: 70, bottom: 600, h: 210 },
+  { tree: true, cx: 300, bottom: 660, h: 220 },
+  { tree: true, cx: 640, bottom: 640, h: 210 },
+  { tree: true, cx: 880, bottom: 665, h: 220 },
+  { tree: true, cx: 1190, bottom: 600, h: 210 },
+  // benches along the path
+  { s: 'bench', x: 160, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 770, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 1020, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 150, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 770, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  { s: 'bench', x: 1020, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
+  // flowers
+  { s: 'plant_flower', x: 330, y: 250, ground: true },
+  { s: 'plant_flower', x: 600, y: 250, ground: true },
+  { s: 'plant_flower', x: 330, y: 450, ground: true },
+  { s: 'plant_flower', x: 600, y: 450, ground: true },
+  { s: 'plant_large', x: 460, y: 540, ground: true },
+  { s: 'plant_large', x: 560, y: 560, ground: true },
+];
+
+function drawParkBackground() {
+  fillPattern(grassPattern, 0, 0, W, H);
+  fillPattern(brickPattern, 0, PARK_PATH_Y.y, W, PARK_PATH_Y.h);
+  fillPattern(brickPattern, DOOR.x - 90, PARK_PATH_Y.y - 40, DOOR.w + 180, PARK_PATH_Y.h + 80);
+  fillPattern(brickVPattern, DOOR.x, 0, DOOR.w, PARK_PATH_Y.y);
+
+  for (let x = 40; x < DOOR.x - 30; x += 56) drawBush(x, 125, 64);
+  for (let x = DOOR.x + DOOR.w + 40; x < W; x += 56) drawBush(x, 125, 64);
+  for (let x = 40; x < W; x += 64) drawBush(x, H - 2, 64);
+}
+
 // ---- Player ----
 
 const PLAYER_HEIGHT = 72;
 const PLAYER_SPEED = 170;
 const FEET_HALF_W = 12;
 const FEET_H = 8;
-const WALK_BOUNDS = {
-  minX: ROOM.x + 14,
-  maxX: ROOM.x + ROOM.w - 14,
-  minY: FLOOR_Y + 6,
-  maxY: ROOM.y + ROOM.h - 28,
-};
 
 const PLAYER_URLS = {
   standing: standingUrl,
@@ -339,6 +546,7 @@ const PLAYER_URLS = {
   tree: treeUrl,
   bush: bushUrl,
   brick: brickUrl,
+  brickV: brickVerticalUrl,
   counter: countertopUrl,
   wallUpper: wallUpperUrl,
   wallWainscot: wallWainscotUrl,
@@ -346,6 +554,14 @@ const PLAYER_URLS = {
   frameRight: frameRightUrl,
   post: postUrl,
   window: windowUrl,
+  bookshelfLow: bookshelfLowUrl,
+  bookshelfShort: bookshelfShortUrl,
+  bookshelfTall: bookshelfTallUrl,
+  flowerShelf: flowerShelfUrl,
+  cashRegister: cashRegisterUrl,
+  flowerPots: flowerPotsUrl,
+  flowerPost: flowerPostUrl,
+  flowerTent: flowerTentUrl,
 };
 let grassImage = null;
 const frames = {};
@@ -432,29 +648,84 @@ const HITS = {
 };
 const NO_HIT = new Set(['cafe_sign', 'bench']);
 
-let colliders = [];
+// walkable areas are in feet-box corner space; the feet box may only sit inside their union
+const CAFE_WALKABLE = [
+  { x0: ROOM.x + 14, y0: FLOOR_Y - 2, x1: ROOM.x + ROOM.w - 14, y1: ROOM.y + ROOM.h - 28 },
+  { x0: ROOM.x + ROOM.w - 24, y0: OPENING.y + 8, x1: 1140, y1: OPENING.y + OPENING.h - 2 },
+  { x0: 1010, y0: -60, x1: 1140, y1: TURN.y + 30 },
+  { x0: 1010, y0: TURN.y + 8, x1: W + 40, y1: TURN.y + TURN.h - 2 },
+  { x0: DOOR.x + 10, y0: ROOM.y + ROOM.h - 44, x1: DOOR.x + DOOR.w - 10, y1: H - 8 },
+];
+const LIBRARY_WALKABLE = [
+  { x0: 38, y0: FLOOR_Y - 2, x1: W - 38, y1: LIB_BOTTOM - 4 },
+  { x0: LIB_DOOR.x + 8, y0: LIB_BOTTOM - 20, x1: LIB_DOOR.x + LIB_DOOR.w - 8, y1: H - 8 },
+];
 
-function buildColliders() {
-  colliders = [{ x: COUNTER.x, y: COUNTER.bottom - COUNTER.hitH, w: COUNTER.w, h: COUNTER.hitH }];
-  for (const f of FURNITURE) {
-    if (NO_HIT.has(f.s)) continue;
-    const { w, h } = spriteSize(f.s);
-    for (const [fx, fy, fw, fh] of HITS[f.s] || BOTTOM_BAND) {
-      colliders.push({ x: f.x + fx * w, y: f.y + fy * h, w: fw * w, h: fh * h });
-    }
-  }
+const scenes = {};
+let scene = null;
+
+function makeItem(spec) {
+  const size = spec.s ? spriteSize(spec.s) : spec;
+  const hits = spec.hits || (NO_HIT.has(spec.s) ? [] : HITS[spec.s] || BOTTOM_BAND);
+  return { img: spec.img || images[spec.s], x: spec.x, y: spec.y, w: size.w, h: size.h, ground: spec.ground, hits };
+}
+
+function itemColliders(items) {
+  return items.flatMap((it) => it.hits.map(([fx, fy, fw, fh]) => (
+    { x: it.x + fx * it.w, y: it.y + fy * it.h, w: fw * it.w, h: fh * it.h }
+  )));
+}
+
+function inWalkable(rects, x, y) {
+  return rects.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
 }
 
 function blocked(x, y) {
   const l = x - FEET_HALF_W;
   const r = x + FEET_HALF_W;
   const t = y - FEET_H;
-  if (l < WALK_BOUNDS.minX || r > WALK_BOUNDS.maxX) return true;
-  if (y < WALK_BOUNDS.minY || y > WALK_BOUNDS.maxY) return true;
-  return colliders.some((c) => l < c.x + c.w && r > c.x && t < c.y + c.h && y > c.y);
+  const area = scene.walkable;
+  if (!(inWalkable(area, l, t) && inWalkable(area, r, t) && inWalkable(area, l, y) && inWalkable(area, r, y))) return true;
+  return scene.colliders.some((c) => l < c.x + c.w && r > c.x && t < c.y + c.h && y > c.y);
+}
+
+// ---- Scene changes ----
+
+const FADE = 0.25;
+const transition = { phase: 'none', t: 0, exit: null };
+
+function checkExits() {
+  if (transition.phase !== 'none') return;
+  const exit = scene.exits.find((e) => e.test(player));
+  if (exit) { transition.phase = 'out'; transition.t = 0; transition.exit = exit; }
+}
+
+function updateTransition(dt) {
+  if (transition.phase === 'none') return;
+  transition.t += dt;
+  if (transition.t < FADE) return;
+  if (transition.phase === 'out') {
+    const { to, spawn } = transition.exit;
+    scene = scenes[to];
+    Object.assign(player, spawn, { moving: false, t: 0 });
+    transition.phase = 'in';
+    transition.t = 0;
+  } else {
+    transition.phase = 'none';
+  }
+}
+
+function drawFade() {
+  if (transition.phase === 'none') return;
+  const k = Math.min(transition.t / FADE, 1);
+  ctx.fillStyle = `rgba(0, 0, 0, ${transition.phase === 'out' ? k : 1 - k})`;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function updatePlayer(dt) {
+  updateTransition(dt);
+  if (transition.phase !== 'none') { player.moving = false; return; }
+
   let dx = 0;
   let dy = 0;
   if (held.includes('left')) dx -= 1;
@@ -473,6 +744,7 @@ function updatePlayer(dt) {
   if (!blocked(nx, player.y)) player.x = nx;
   if (!blocked(player.x, ny)) player.y = ny;
   player.t += dt;
+  checkExits();
 }
 
 function drawPlayer() {
@@ -510,9 +782,11 @@ function drawPlayer() {
 
 function drawHitboxes() {
   ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(0, 200, 80, 0.8)';
+  for (const r of scene.walkable) ctx.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
   ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
   ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-  for (const c of colliders) {
+  for (const c of scene.colliders) {
     ctx.fillRect(c.x, c.y, c.w, c.h);
     ctx.strokeRect(c.x, c.y, c.w, c.h);
   }
@@ -522,42 +796,120 @@ function drawHitboxes() {
 
 // ---- Rendering ----
 
-function buildBackground() {
-  ctx = background.getContext('2d');
+function paintOnto(canvas, draw) {
+  ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  buildPatterns();
-  drawOutdoors();
-  drawFloor();
-  drawWalls();
-  drawHedge();
-  for (const d of WALL_DECOR) drawSprite(d.s, d.x, d.y);
-  drawShelf();
-  drawBackCounter();
-  for (const f of FLAT) drawSprite(f.s, f.x, f.y);
+  draw();
   ctx = screen;
+}
+
+function buildScenes() {
+  paintOnto(background, () => {
+    buildPatterns();
+    drawOutdoors();
+    drawFloor();
+    drawWalls();
+    drawHedge();
+    for (const d of WALL_DECOR) drawSprite(d.s, d.x, d.y);
+    drawShelf();
+    drawBackCounter();
+    for (const f of FLAT) drawSprite(f.s, f.x, f.y);
+  });
+  libWallShelves = LIB_WALL_SHELF_SPECS.map((sp) => {
+    const sh = frameSprite(sp.frame, sp.h);
+    return { ...sh, x: sp.x, y: LIB_SHELF_BOTTOM - sp.h };
+  });
+  const libraryBg = document.createElement('canvas');
+  libraryBg.width = W;
+  libraryBg.height = H;
+  paintOnto(libraryBg, drawLibraryBackground);
+
+  const cafeItems = FURNITURE.map(makeItem);
+  scenes.cafe = {
+    bg: background,
+    items: cafeItems,
+    walkable: CAFE_WALKABLE,
+    colliders: [
+      { x: COUNTER.x, y: COUNTER.bottom - COUNTER.hitH, w: COUNTER.w, h: COUNTER.hitH },
+      ...itemColliders(cafeItems),
+    ],
+    exits: [
+      { test: (p) => p.y < 40, to: 'library', spawn: { x: 645, y: 628, facing: 'up' } },
+      { test: (p) => p.y > 696, to: 'park', spawn: { x: DOOR.x + DOOR.w / 2, y: 40, facing: 'down' } },
+      { test: (p) => p.x > W - 12, to: 'shop', spawn: { x: 40, y: TURN.y + 70, facing: 'right' } },
+    ],
+  };
+
+  const libItems = LIBRARY_ITEMS.map((spec) => makeItem(spec.frame
+    ? { ...spec, ...frameSprite(spec.frame, spec.h), hits: spec.hits || [[0.03, 0.55, 0.94, 0.45]] }
+    : spec));
+  scenes.library = {
+    bg: libraryBg,
+    items: libItems,
+    walkable: LIBRARY_WALKABLE,
+    colliders: [
+      ...libWallShelves.map((sh) => ({ x: sh.x, y: FLOOR_Y, w: sh.w, h: LIB_SHELF_BOTTOM - FLOOR_Y })),
+      ...itemColliders(libItems),
+    ],
+    exits: [{ test: (p) => p.y > 696, to: 'cafe', spawn: { x: 1075, y: 70, facing: 'down' } }],
+  };
+
+  shopWallShelves = SHOP_WALL_SHELF_SPECS.map((sp) => ({ ...frameSprite(sp.frame, sp.h), x: sp.x, y: SHOP_SHELF_BOTTOM - sp.h }));
+  const shopBg = document.createElement('canvas');
+  shopBg.width = W;
+  shopBg.height = H;
+  paintOnto(shopBg, drawShopBackground);
+  const shopItems = SHOP_ITEMS.map((spec) => makeItem(spec.frame ? { ...spec, ...frameSprite(spec.frame, spec.h) } : spec));
+  scenes.shop = {
+    bg: shopBg,
+    items: shopItems,
+    walkable: SHOP_WALKABLE,
+    colliders: [
+      ...shopWallShelves.map((sh) => ({ x: sh.x, y: FLOOR_Y, w: sh.w, h: SHOP_SHELF_BOTTOM - FLOOR_Y })),
+      ...itemColliders(shopItems),
+    ],
+    exits: [{ test: (p) => p.x < 12, to: 'cafe', spawn: { x: W - 40, y: TURN.y + 70, facing: 'left' } }],
+  };
+
+  const parkBg = document.createElement('canvas');
+  parkBg.width = W;
+  parkBg.height = H;
+  paintOnto(parkBg, drawParkBackground);
+  const parkItems = PARK_ITEMS.map((spec) => {
+    if (!spec.tree) return makeItem(spec);
+    const sp = frameSprite('tree', spec.h);
+    return makeItem({ ...sp, x: spec.cx - sp.w / 2, y: spec.bottom - sp.h, hits: PARK_TREE_HITS });
+  });
+  scenes.park = {
+    bg: parkBg,
+    items: parkItems,
+    walkable: PARK_WALKABLE,
+    colliders: itemColliders(parkItems),
+    exits: [{ test: (p) => p.y < 20, to: 'cafe', spawn: { x: DOOR.x + DOOR.w / 2, y: 670, facing: 'up' } }],
+  };
+
+  scene = scenes.cafe;
 }
 
 function render() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(background, 0, 0);
+  ctx.drawImage(scene.bg, 0, 0);
 
-  const drawables = FURNITURE.map((f) => {
-    const { w, h } = spriteSize(f.s);
-    return {
-      bottom: f.y + h,
-      draw: () => {
-        if (f.ground) drawShadow(f.x, f.y, w, h);
-        drawSprite(f.s, f.x, f.y);
-      },
-    };
-  });
+  const drawables = scene.items.map((it) => ({
+    bottom: it.y + it.h,
+    draw: () => {
+      if (it.ground) drawShadow(it.x, it.y, it.w, it.h);
+      ctx.drawImage(it.img, Math.round(it.x), Math.round(it.y), it.w, it.h);
+    },
+  }));
   drawables.push({ bottom: player.y, draw: drawPlayer });
   drawables.sort((a, b) => a.bottom - b.bottom);
   for (const d of drawables) d.draw();
 
   if (showHitboxes) drawHitboxes();
+  drawFade();
 }
 
 let lastTime = 0;
@@ -570,8 +922,7 @@ function frame(time) {
 }
 
 Promise.all([loadImages(), loadPlayerFrames()]).then(() => {
-  buildBackground();
-  buildColliders();
+  buildScenes();
   requestAnimationFrame((t) => { lastTime = t; requestAnimationFrame(frame); });
 }).catch((err) => {
   console.error(err);
