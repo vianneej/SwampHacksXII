@@ -24,6 +24,10 @@ import cashRegisterUrl from '../assets/cashregister.png';
 import flowerPotsUrl from '../assets/flowerpots.png';
 import flowerPostUrl from '../assets/flowerpost.png';
 import flowerTentUrl from '../assets/flowertent.png';
+import fountainUrl from '../assets/fountain.png';
+import slideUrl from '../assets/slide.png';
+import wildflowersUrl from '../assets/wildflowers.png';
+import librarySignUrl from '../assets/librarysign.png';
 
 const canvas = document.getElementById('game');
 const screen = canvas.getContext('2d');
@@ -359,6 +363,7 @@ const LIBRARY_ITEMS = [
   { s: 'plant_large', x: 1185, y: 330, ground: true },
   { s: 'plant_medium', x: 40, y: 560, ground: true },
   { s: 'plant_flower', x: 850, y: 596, ground: true },
+  { frame: 'librarySign', x: 738, y: 585, h: 132, hits: [] },
 ];
 
 function frameSprite(name, h) {
@@ -489,6 +494,8 @@ const PARK_WALKABLE = [
   { x0: 40, y0: 140, x1: W - 40, y1: H - 70 },
 ];
 const PARK_TREE_HITS = [[0.4, 0.85, 0.2, 0.15]];
+const BENCH_HITS = [[0.02, 0.4, 0.96, 0.6]];
+const WILD_HITS = [[0.15, 0.6, 0.7, 0.4]];
 const PARK_ITEMS = [
   // top row of trees
   { tree: true, cx: 90, bottom: 230, h: 220 },
@@ -498,34 +505,47 @@ const PARK_ITEMS = [
   { tree: true, cx: 1170, bottom: 230, h: 220 },
   // bottom trees
   { tree: true, cx: 70, bottom: 600, h: 210 },
-  { tree: true, cx: 300, bottom: 660, h: 220 },
-  { tree: true, cx: 640, bottom: 640, h: 210 },
-  { tree: true, cx: 880, bottom: 665, h: 220 },
-  { tree: true, cx: 1190, bottom: 600, h: 210 },
-  // benches along the path
-  { s: 'bench', x: 160, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  { s: 'bench', x: 770, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  { s: 'bench', x: 1020, y: 250, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  { s: 'bench', x: 150, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  { s: 'bench', x: 770, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  { s: 'bench', x: 1020, y: 450, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
-  // flowers
-  { s: 'plant_flower', x: 330, y: 250, ground: true },
-  { s: 'plant_flower', x: 600, y: 250, ground: true },
-  { s: 'plant_flower', x: 330, y: 450, ground: true },
-  { s: 'plant_flower', x: 600, y: 450, ground: true },
-  { s: 'plant_large', x: 460, y: 540, ground: true },
-  { s: 'plant_large', x: 560, y: 560, ground: true },
+  { tree: true, cx: 215, bottom: 690, h: 190 },
+  { tree: true, cx: 715, bottom: 695, h: 190 },
+  { tree: true, cx: 1200, bottom: 650, h: 200 },
+  // fountain plaza and slide
+  { frame: 'fountain', cx: 465, y: 440, h: 210, hits: [[0.05, 0.3, 0.9, 0.7]] },
+  { frame: 'slide', x: 880, y: 520, h: 150, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  // benches
+  { s: 'bench', x: 160, y: 250, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 770, y: 250, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 1020, y: 250, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 130, y: 435, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 780, y: 440, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 1010, y: 440, ground: true, hits: BENCH_HITS },
+  // wildflowers
+  { frame: 'wildflowers', x: 320, y: 255, h: 58, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 585, y: 255, h: 58, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 255, y: 520, h: 62, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 625, y: 520, h: 62, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 285, y: 600, h: 55, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 625, y: 610, h: 55, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 1110, y: 590, h: 60, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 60, y: 480, h: 58, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 1200, y: 360, h: 58, hits: WILD_HITS },
+  { s: 'plant_flower', x: 930, y: 450, ground: true },
 ];
 
 function drawParkBackground() {
   fillPattern(grassPattern, 0, 0, W, H);
   fillPattern(brickPattern, 0, PARK_PATH_Y.y, W, PARK_PATH_Y.h);
-  fillPattern(brickPattern, DOOR.x - 90, PARK_PATH_Y.y - 40, DOOR.w + 180, PARK_PATH_Y.h + 80);
+  fillPattern(brickPattern, 310, PARK_PATH_Y.y - 20, 310, 675 - PARK_PATH_Y.y + 20);
   fillPattern(brickVPattern, DOOR.x, 0, DOOR.w, PARK_PATH_Y.y);
 
+  for (let y = 80; y <= 290; y += 52) {
+    drawBush(DOOR.x - 14, y, 46);
+    drawBush(DOOR.x + DOOR.w + 14, y, 46);
+  }
+  for (let y = 470; y <= 680; y += 52) {
+    drawBush(298, y, 50);
+    drawBush(632, y, 50);
+  }
   for (let x = 40; x < DOOR.x - 30; x += 56) drawBush(x, 125, 64);
-  for (let x = DOOR.x + DOOR.w + 40; x < W; x += 56) drawBush(x, 125, 64);
   for (let x = 40; x < W; x += 64) drawBush(x, H - 2, 64);
 }
 
@@ -562,6 +582,10 @@ const PLAYER_URLS = {
   flowerPots: flowerPotsUrl,
   flowerPost: flowerPostUrl,
   flowerTent: flowerTentUrl,
+  fountain: fountainUrl,
+  slide: slideUrl,
+  wildflowers: wildflowersUrl,
+  librarySign: librarySignUrl,
 };
 let grassImage = null;
 const frames = {};
@@ -877,6 +901,10 @@ function buildScenes() {
   parkBg.height = H;
   paintOnto(parkBg, drawParkBackground);
   const parkItems = PARK_ITEMS.map((spec) => {
+    if (spec.frame) {
+      const sp = frameSprite(spec.frame, spec.h);
+      return makeItem({ ...spec, ...sp, x: spec.cx !== undefined ? spec.cx - sp.w / 2 : spec.x });
+    }
     if (!spec.tree) return makeItem(spec);
     const sp = frameSprite('tree', spec.h);
     return makeItem({ ...sp, x: spec.cx - sp.w / 2, y: spec.bottom - sp.h, hits: PARK_TREE_HITS });
