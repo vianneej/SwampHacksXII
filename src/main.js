@@ -1,7 +1,29 @@
+import standingUrl from '../assets/standing.png';
+import moveUpUrl from '../assets/moveup.png';
+import moveDownUrl from '../assets/movedown.png';
+import moveLeftUrl from '../assets/moveleft.png';
+import moveRightUrl from '../assets/moveright.png';
+import doorUrl from '../assets/door.png';
+import treeUrl from '../assets/tree.png';
+import bushUrl from '../assets/bush.png';
+import brickUrl from '../assets/brick.png';
+import grassUrl from '../assets/grass.png';
+import countertopUrl from '../assets/countertop.png';
+import wallUpperUrl from '../assets/walls/wall_upper.png';
+import wallWainscotUrl from '../assets/walls/wall_wainscot.png';
+import frameLeftUrl from '../assets/walls/frame_left.png';
+import frameRightUrl from '../assets/walls/frame_right.png';
+import postUrl from '../assets/walls/post.png';
+import windowUrl from '../assets/window.png';
+
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+const screen = canvas.getContext('2d');
+let ctx = screen;
 const W = canvas.width;
 const H = canvas.height;
+const background = document.createElement('canvas');
+background.width = W;
+background.height = H;
 
 const SCALE = 0.55;
 const PX = 4;
@@ -31,15 +53,7 @@ const WALL_DECOR = [
   { s: 'painting', x: 775, y: 44 },
 ];
 
-const COUNTER = { x: 480, w: 392, topY: 150 };
-
-const ON_COUNTER = [
-  { s: 'espresso', x: 496 },
-  { s: 'grinder', x: 596 },
-  { s: 'pastry_case', x: 640 },
-  { s: 'sink', x: 756 },
-  { s: 'crate', x: 822 },
-];
+const COUNTER = { x: 470, w: 420, bottom: 226, hitH: 56 };
 
 const SHELF = { x: 310, y: 112, w: 120 };
 const ON_SHELF = [
@@ -109,79 +123,96 @@ function drawShadow(x, y, w, h) {
   ctx.fill();
 }
 
-function drawGrass() {
-  rect(0, 0, W, H, '#4c8a37');
-  for (let y = 0; y < H; y += PX) {
-    for (let x = 0; x < W; x += PX) {
-      const r = hash(x, y);
-      if (r > 0.93) rect(x, y, PX, PX, '#3f7a2e');
-      else if (r < 0.04) rect(x, y, PX, PX, '#5f9f45');
-    }
+const GRASS_CROP = { sx: 128, sy: 128, size: 998 };
+const GRASS_TILE = 128;
+const BRICK_TILE = 160;
+let grassPattern = null;
+let brickPattern = null;
+let wallUpperTile = null;
+let wallWainscotTile = null;
+const WALL_UPPER_H = 120;
+const WALL_WAINSCOT_H = 50;
+const FRAME_T = 26;
+
+function makeTile(src, sx, sy, sw, sh, size, mirror) {
+  const n = mirror ? 2 : 1;
+  const c = document.createElement('canvas');
+  c.width = size * n;
+  c.height = size * n;
+  const t = c.getContext('2d');
+  t.imageSmoothingEnabled = true;
+  t.imageSmoothingQuality = 'high';
+  t.drawImage(src, sx, sy, sw, sh, 0, 0, size, size);
+  if (mirror) {
+    t.save(); t.scale(-1, 1); t.drawImage(src, sx, sy, sw, sh, -2 * size, 0, size, size); t.restore();
+    t.save(); t.scale(1, -1); t.drawImage(src, sx, sy, sw, sh, 0, -2 * size, size, size); t.restore();
+    t.save(); t.scale(-1, -1); t.drawImage(src, sx, sy, sw, sh, -2 * size, -2 * size, size, size); t.restore();
   }
+  return c;
+}
+
+function buildPatterns() {
+  const g = GRASS_CROP;
+  grassPattern = ctx.createPattern(makeTile(grassImage, g.sx, g.sy, g.size, g.size, GRASS_TILE, true), 'repeat');
+  const b = frames.brick;
+  brickPattern = ctx.createPattern(makeTile(b.img, b.sx, b.sy, b.sw, b.sh, BRICK_TILE, false), 'repeat');
+  wallUpperTile = scaledTile(frames.wallUpper, 28, WALL_UPPER_H);
+  wallWainscotTile = scaledTile(frames.wallWainscot, 32, WALL_WAINSCOT_H);
+}
+
+function scaledTile(f, w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const t = c.getContext('2d');
+  t.imageSmoothingEnabled = true;
+  t.imageSmoothingQuality = 'high';
+  t.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, 0, 0, w, h);
+  return ctx.createPattern(c, 'repeat');
+}
+
+function fillPattern(pattern, x, y, w, h) {
+  ctx.fillStyle = pattern;
+  ctx.fillRect(x, y, w, h);
 }
 
 function drawPath() {
-  const pathX = 1010;
-  const pathW = 130;
-  const dirt = (x, y, w, h) => {
-    for (let yy = y; yy < y + h; yy += PX) {
-      for (let xx = x; xx < x + w; xx += PX) {
-        const r = hash(xx + 7, yy + 3);
-        rect(xx, yy, PX, PX, r > 0.9 ? '#c4902f' : r < 0.08 ? '#e6b852' : '#d8a53c');
-      }
-    }
-  };
-  dirt(pathX, 0, pathW, H);
-  dirt(ROOM.x + ROOM.w, OPENING.y + 10, pathX - ROOM.x - ROOM.w + 8, OPENING.h - 20);
-
-  for (let i = 0; i < 26; i++) {
-    const sx = pathX + 20 + Math.floor(hash(i, 1) * (pathW - 60));
-    const sy = 20 + Math.floor(hash(i, 2) * (H - 40));
-    const sw = 12 + Math.floor(hash(i, 3) * 3) * PX;
-    rect(sx, sy, sw, PX * 2, '#a9a49a');
-    rect(sx, sy, sw, PX, '#c9c5ba');
-  }
+  fillPattern(brickPattern, 1010, 0, 130, H);
+  fillPattern(brickPattern, ROOM.x + ROOM.w - 4, OPENING.y, 1018 - ROOM.x - ROOM.w + 4, OPENING.h);
 }
 
-function drawBush(cx, cy, r) {
-  for (let y = -r; y <= r; y += PX) {
-    for (let x = -r; x <= r; x += PX) {
-      const d = Math.hypot(x, y * 1.15);
-      if (d > r) continue;
-      const light = d < r * 0.5 && y < 0;
-      const n = hash(cx + x, cy + y);
-      rect(cx + x, cy + y, PX, PX, light ? '#4fa64a' : n > 0.8 ? '#2f6a2c' : '#357a33');
-    }
-  }
+function drawBush(cx, bottom, w) {
+  const f = frames.bush;
+  const h = w * (f.sh / f.sw);
+  ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, Math.round(cx - w / 2), Math.round(bottom - h), w, h);
 }
 
-function drawTree(cx, cy) {
-  rect(cx - 14, cy + 40, 28, 90, '#5a3a1c');
-  rect(cx - 14, cy + 40, 8, 90, '#7a5028');
-  for (let i = 0; i < 4; i++) drawBush(cx + (i - 1.5) * 38, cy + (i % 2) * 24, 52);
-  drawBush(cx, cy - 20, 60);
+function drawTree(cx, bottom, h) {
+  const f = frames.tree;
+  const w = h * (f.sw / f.sh);
+  ctx.fillStyle = 'rgba(20, 50, 15, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx, bottom - 4, w * 0.28, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, Math.round(cx - w / 2), Math.round(bottom - h), w, h);
 }
 
 function drawOutdoors() {
-  drawGrass();
+  fillPattern(grassPattern, 0, 0, W, H);
   drawPath();
 
-  for (let x = 40; x < 380; x += 70) drawBush(x, 692, 34);
-  for (let x = 570; x < 900; x += 70) drawBush(x, 692, 34);
-  drawBush(960, 600, 40);
-  drawBush(1170, 640, 46);
-  drawBush(1240, 520, 40);
-  drawTree(1210, 80);
-  drawTree(1180, 290);
+  drawBush(960, 640, 70);
+  drawBush(1180, H - 8, 90);
+  drawBush(1250, 580, 80);
+  drawTree(1205, 230, 210);
+  drawTree(1205, 480, 210);
 
-  // stone steps below the door
-  for (let row = 0; row < 3; row++) {
-    const y = ROOM.y + ROOM.h + row * 20;
-    for (let x = DOOR.x; x < DOOR.x + DOOR.w; x += 30) {
-      const off = row % 2 ? 15 : 0;
-      rect(x - off, y, 28, 18, hash(x, y) > 0.5 ? '#b89868' : '#c9ab7a');
-    }
-  }
+  fillPattern(brickPattern, DOOR.x, ROOM.y + ROOM.h - 24, DOOR.w, H - ROOM.y - ROOM.h + 24);
+}
+
+function drawHedge() {
+  for (let x = 40; x < 380; x += 56) drawBush(x, H - 8, 64);
+  for (let x = 580; x < 900; x += 56) drawBush(x, H - 8, 64);
 }
 
 function drawFloor() {
@@ -212,60 +243,58 @@ function drawFloor() {
   }
 }
 
+function fillAt(pattern, x, y, w, h) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+function drawFrame(f, x, y, w, h) {
+  ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, x, y, w, h);
+}
+
 function drawWalls() {
   const { x, y, w, h } = ROOM;
-  const frame = '#4a2a14';
-  const frameLight = '#6b4122';
+  const right = x + w;
+  const outerR = right + 24;
+  const bottomY = y + h - 24;
 
-  // back wall
-  rect(x, y, w, FLOOR_Y - y, '#ecd9ad');
-  for (let sx = x; sx < x + w; sx += 24) rect(sx, y, 2, 100, '#e2cb9a');
-  rect(x, 118, w, FLOOR_Y - 118, '#8a5a2e');
-  rect(x, 118, w, 6, '#5a3318');
-  rect(x, 124, w, 3, '#b07a42');
-  for (let sx = x; sx < x + w; sx += 40) rect(sx, 127, 2, FLOOR_Y - 127, '#6b4122');
+  // back wall: beam, cream planks and wainscot in one strip
+  fillAt(wallUpperTile, 0, 0, outerR, WALL_UPPER_H);
+  fillAt(wallWainscotTile, 0, WALL_UPPER_H, outerR, WALL_WAINSCOT_H);
 
-  // outer frame
-  rect(0, 0, W, 0, frame);
-  rect(x - 24, y - 24, w + 48, 24, frame);
-  rect(x - 24, y - 24, 24, h + 48, frame);
-  rect(x + w, y - 24, 24, OPENING.y - y + 24, frame);
-  rect(x + w, OPENING.y + OPENING.h, 24, y + h - OPENING.y - OPENING.h + 24, frame);
-  rect(x - 24, y + h - 24, DOOR.x - x + 24, 48, frame);
-  rect(DOOR.x + DOOR.w, y + h - 24, x + w - DOOR.x - DOOR.w + 24, 48, frame);
-  rect(x - 24, y - 24, w + 48, 4, frameLight);
-  rect(x, y, 4, h - 24, '#5a3318');
-  rect(x + w - 8, y, 8, OPENING.y - y, '#5a3318');
-  rect(x + w - 8, OPENING.y + OPENING.h, 8, y + h - OPENING.y - OPENING.h - 24, '#5a3318');
-
-  // bottom wall face (wood wainscot)
-  rect(x, y + h - 24, DOOR.x - x, 24, '#7d4a24');
-  rect(DOOR.x + DOOR.w, y + h - 24, x + w - DOOR.x - DOOR.w, 24, '#7d4a24');
-  rect(x, y + h - 24, DOOR.x - x, 4, '#a86f38');
-  rect(DOOR.x + DOOR.w, y + h - 24, x + w - DOOR.x - DOOR.w, 4, '#a86f38');
-  for (let sx = x; sx < x + w; sx += 40) {
-    if (sx >= DOOR.x - 20 && sx < DOOR.x + DOOR.w) continue;
-    rect(sx, y + h - 20, 2, 20, '#5a3318');
+  // front wall, split around the door
+  for (const [x0, x1] of [[0, DOOR.x], [DOOR.x + DOOR.w, outerR]]) {
+    fillAt(wallWainscotTile, x0, bottomY, x1 - x0, WALL_WAINSCOT_H);
+    rect(x0, bottomY, x1 - x0, 3, '#a86f38');
   }
 
-  // door frame posts
-  rect(DOOR.x - 8, y + h - 28, 8, 36, '#5a3318');
-  rect(DOOR.x + DOOR.w, y + h - 28, 8, 36, '#5a3318');
+  // side walls, split around the opening on the right
+  drawFrame(frames.frameLeft, 0, 0, FRAME_T, bottomY + WALL_WAINSCOT_H);
+  drawFrame(frames.frameRight, outerR - FRAME_T, 0, FRAME_T, OPENING.y);
+  drawFrame(frames.frameRight, outerR - FRAME_T, OPENING.y + OPENING.h, FRAME_T, bottomY + WALL_WAINSCOT_H - OPENING.y - OPENING.h);
+
+  // posts at the ends of the wall openings
+  const post = (px, py, pw, ph) => drawFrame(frames.post, px, py, pw, ph);
+  post(outerR - FRAME_T, OPENING.y - 28, FRAME_T, 28);
+  post(outerR - FRAME_T, OPENING.y + OPENING.h, FRAME_T, 28);
+  post(DOOR.x - 26, bottomY, 26, WALL_WAINSCOT_H);
+  post(DOOR.x + DOOR.w, bottomY, 26, WALL_WAINSCOT_H);
 
   // back door
-  rect(60, 52, 64, 98, '#5a3318');
-  rect(66, 58, 52, 92, '#7d4a24');
-  rect(72, 66, 40, 30, '#8f5a2e');
-  rect(72, 102, 40, 40, '#8f5a2e');
-  rect(106, 112, 6, 6, '#e6b852');
+  const door = frames.door;
+  const doorH = 114;
+  const doorW = Math.round(door.sw * (doorH / door.sh));
+  ctx.drawImage(door.img, door.sx, door.sy, door.sw, door.sh, 92 - Math.round(doorW / 2), FLOOR_Y - doorH - 2, doorW, doorH);
 
   // windows
-  for (const wx of [150, 560]) {
-    rect(wx, 54, 52, 52, '#5a3318');
-    rect(wx + 5, 59, 42, 42, '#9fd0e8');
-    rect(wx + 5, 59, 42, 12, '#c4e4f2');
-    rect(wx + 24, 59, 4, 42, '#5a3318');
-    rect(wx + 5, 78, 42, 4, '#5a3318');
+  const win = frames.window;
+  const winW = 70;
+  const winH = Math.round(winW * (win.sh / win.sw));
+  for (const cx of [176, 586]) {
+    ctx.drawImage(win.img, win.sx, win.sy, win.sw, win.sh, cx - winW / 2, 36, winW, winH);
   }
 }
 
@@ -281,48 +310,270 @@ function drawShelf() {
 }
 
 function drawBackCounter() {
-  const { x, w, topY } = COUNTER;
-  rect(x, topY + 20, w, 56, '#7d4a24');
-  rect(x, topY + 20, w, 6, '#5a3318');
-  for (let cx = x + 8; cx < x + w - 40; cx += 72) {
-    rect(cx, topY + 34, 60, 34, '#8f5a2e');
-    rect(cx, topY + 34, 60, 3, '#a86f38');
-    rect(cx + 26, topY + 48, 8, 4, '#e6b852');
-  }
-  rect(x - 4, topY + 14, w + 8, 12, '#b07a42');
-  rect(x - 4, topY + 14, w + 8, 3, '#cf9560');
+  const f = frames.counter;
+  const { x, w, bottom } = COUNTER;
+  const h = Math.round(w * (f.sh / f.sw));
+  ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, x, bottom - h, w, h);
+}
 
-  for (const item of ON_COUNTER) {
-    const { h } = spriteSize(item.s);
-    drawSprite(item.s, item.x, topY + 22 - h);
+// ---- Player ----
+
+const PLAYER_HEIGHT = 72;
+const PLAYER_SPEED = 170;
+const FEET_HALF_W = 12;
+const FEET_H = 8;
+const WALK_BOUNDS = {
+  minX: ROOM.x + 14,
+  maxX: ROOM.x + ROOM.w - 14,
+  minY: FLOOR_Y + 6,
+  maxY: ROOM.y + ROOM.h - 28,
+};
+
+const PLAYER_URLS = {
+  standing: standingUrl,
+  up: moveUpUrl,
+  down: moveDownUrl,
+  left: moveLeftUrl,
+  right: moveRightUrl,
+  door: doorUrl,
+  tree: treeUrl,
+  bush: bushUrl,
+  brick: brickUrl,
+  counter: countertopUrl,
+  wallUpper: wallUpperUrl,
+  wallWainscot: wallWainscotUrl,
+  frameLeft: frameLeftUrl,
+  frameRight: frameRightUrl,
+  post: postUrl,
+  window: windowUrl,
+};
+let grassImage = null;
+const frames = {};
+
+const player = { x: 465, y: 600, facing: 'down', moving: false, t: 0 };
+
+const DIRECTIONS = {
+  KeyW: 'up', ArrowUp: 'up',
+  KeyS: 'down', ArrowDown: 'down',
+  KeyA: 'left', ArrowLeft: 'left',
+  KeyD: 'right', ArrowRight: 'right',
+};
+const held = [];
+let showHitboxes = false;
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyH' && !e.repeat) showHitboxes = !showHitboxes;
+  const dir = DIRECTIONS[e.code];
+  if (!dir) return;
+  e.preventDefault();
+  if (!held.includes(dir)) held.push(dir);
+});
+window.addEventListener('keyup', (e) => {
+  const dir = DIRECTIONS[e.code];
+  if (!dir) return;
+  const i = held.indexOf(dir);
+  if (i !== -1) held.splice(i, 1);
+});
+window.addEventListener('blur', () => { held.length = 0; });
+
+function loadFrame(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const cx = c.getContext('2d');
+      cx.drawImage(img, 0, 0);
+      const data = cx.getImageData(0, 0, c.width, c.height).data;
+      let minX = c.width, minY = c.height, maxX = -1, maxY = -1;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          if (data[(y * c.width + x) * 4 + 3] > 16) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      resolve({ img, sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 });
+    };
+    img.onerror = () => reject(new Error(`Failed to load player frame: ${url}`));
+    img.src = url;
+  });
+}
+
+async function loadPlayerFrames() {
+  grassImage = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load grass'));
+    img.src = grassUrl;
+  });
+  await Promise.all(Object.entries(PLAYER_URLS).map(async ([name, url]) => {
+    frames[name] = await loadFrame(url);
+  }));
+}
+
+// ---- Collision ----
+
+// hit boxes are fractions of the sprite box: [x, y, w, h]
+const BOTTOM_BAND = [[0.05, 0.6, 0.9, 0.4]];
+const HITS = {
+  bar: [[0, 0.41, 1, 0.59], [0, 0, 0.1, 0.41], [0.9, 0, 0.1, 0.41]],
+  lounge: [[0.01, 0.05, 0.31, 0.85], [0.42, 0.35, 0.39, 0.48]],
+  table_chair_back: [[0.05, 0.5, 0.9, 0.5]],
+  table_chairs_three: [[0.05, 0.5, 0.9, 0.5]],
+  round_table_cups: [[0.1, 0.45, 0.8, 0.55]],
+  plant_large: [[0.25, 0.75, 0.5, 0.25]],
+  plant_medium: [[0.25, 0.75, 0.5, 0.25]],
+  plant_flower: [[0.2, 0.7, 0.6, 0.3]],
+};
+const NO_HIT = new Set(['cafe_sign', 'bench']);
+
+let colliders = [];
+
+function buildColliders() {
+  colliders = [{ x: COUNTER.x, y: COUNTER.bottom - COUNTER.hitH, w: COUNTER.w, h: COUNTER.hitH }];
+  for (const f of FURNITURE) {
+    if (NO_HIT.has(f.s)) continue;
+    const { w, h } = spriteSize(f.s);
+    for (const [fx, fy, fw, fh] of HITS[f.s] || BOTTOM_BAND) {
+      colliders.push({ x: f.x + fx * w, y: f.y + fy * h, w: fw * w, h: fh * h });
+    }
   }
 }
 
-function drawLayer(list) {
-  const items = list
-    .map((item) => ({ ...item, ...spriteSize(item.s) }))
-    .sort((a, b) => a.y + a.h - (b.y + b.h));
-  for (const it of items) {
-    if (it.ground) drawShadow(it.x, it.y, it.w, it.h);
-    drawSprite(it.s, it.x, it.y);
+function blocked(x, y) {
+  const l = x - FEET_HALF_W;
+  const r = x + FEET_HALF_W;
+  const t = y - FEET_H;
+  if (l < WALK_BOUNDS.minX || r > WALK_BOUNDS.maxX) return true;
+  if (y < WALK_BOUNDS.minY || y > WALK_BOUNDS.maxY) return true;
+  return colliders.some((c) => l < c.x + c.w && r > c.x && t < c.y + c.h && y > c.y);
+}
+
+function updatePlayer(dt) {
+  let dx = 0;
+  let dy = 0;
+  if (held.includes('left')) dx -= 1;
+  if (held.includes('right')) dx += 1;
+  if (held.includes('up')) dy -= 1;
+  if (held.includes('down')) dy += 1;
+
+  player.moving = dx !== 0 || dy !== 0;
+  if (held.length) player.facing = held[held.length - 1];
+  if (!player.moving) { player.t = 0; return; }
+
+  const len = Math.hypot(dx, dy);
+  const step = PLAYER_SPEED * dt;
+  const nx = player.x + (dx / len) * step;
+  const ny = player.y + (dy / len) * step;
+  if (!blocked(nx, player.y)) player.x = nx;
+  if (!blocked(player.x, ny)) player.y = ny;
+  player.t += dt;
+}
+
+function drawPlayer() {
+  let frame = frames.standing;
+  let flip = false;
+  let bob = 0;
+
+  if (player.moving) {
+    frame = frames[player.facing];
+    bob = -Math.abs(Math.sin(player.t * 11)) * 3;
+    if (player.facing === 'up' || player.facing === 'down') {
+      flip = Math.floor(player.t * 5) % 2 === 1;
+    }
+  } else if (player.facing === 'up') {
+    frame = frames.up;
   }
+
+  const scale = PLAYER_HEIGHT / frames.standing.sh;
+  const dw = frame.sw * scale;
+  const dh = frame.sh * scale;
+  const px = Math.round(player.x);
+  const py = Math.round(player.y);
+
+  ctx.fillStyle = 'rgba(30, 14, 4, 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(px, py - 2, 17, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(px, py + bob);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(frame.img, frame.sx, frame.sy, frame.sw, frame.sh, -dw / 2, -dh, dw, dh);
+  ctx.restore();
+}
+
+function drawHitboxes() {
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+  ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+  for (const c of colliders) {
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.strokeRect(c.x, c.y, c.w, c.h);
+  }
+  ctx.strokeStyle = 'rgba(0, 120, 255, 0.9)';
+  ctx.strokeRect(player.x - FEET_HALF_W, player.y - FEET_H, FEET_HALF_W * 2, FEET_H);
+}
+
+// ---- Rendering ----
+
+function buildBackground() {
+  ctx = background.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  buildPatterns();
+  drawOutdoors();
+  drawFloor();
+  drawWalls();
+  drawHedge();
+  for (const d of WALL_DECOR) drawSprite(d.s, d.x, d.y);
+  drawShelf();
+  drawBackCounter();
+  for (const f of FLAT) drawSprite(f.s, f.x, f.y);
+  ctx = screen;
 }
 
 function render() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(background, 0, 0);
 
-  drawOutdoors();
-  drawFloor();
-  drawWalls();
-  for (const d of WALL_DECOR) drawSprite(d.s, d.x, d.y);
-  drawShelf();
-  drawBackCounter();
-  for (const f of FLAT) drawSprite(f.s, f.x, f.y);
-  drawLayer(FURNITURE);
+  const drawables = FURNITURE.map((f) => {
+    const { w, h } = spriteSize(f.s);
+    return {
+      bottom: f.y + h,
+      draw: () => {
+        if (f.ground) drawShadow(f.x, f.y, w, h);
+        drawSprite(f.s, f.x, f.y);
+      },
+    };
+  });
+  drawables.push({ bottom: player.y, draw: drawPlayer });
+  drawables.sort((a, b) => a.bottom - b.bottom);
+  for (const d of drawables) d.draw();
+
+  if (showHitboxes) drawHitboxes();
 }
 
-loadImages().then(render).catch((err) => {
+let lastTime = 0;
+function frame(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  updatePlayer(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+Promise.all([loadImages(), loadPlayerFrames()]).then(() => {
+  buildBackground();
+  buildColliders();
+  requestAnimationFrame((t) => { lastTime = t; requestAnimationFrame(frame); });
+}).catch((err) => {
   console.error(err);
   ctx.fillStyle = '#fff';
   ctx.fillText(err.message, 20, 30);
