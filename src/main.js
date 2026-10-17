@@ -1,8 +1,7 @@
 import standingUrl from '../assets/standing.png';
 import moveUpUrl from '../assets/moveup.png';
 import moveDownUrl from '../assets/movedown.png';
-import moveLeftUrl from '../assets/moveleft.png';
-import moveRightUrl from '../assets/moveright.png';
+import walkLeftUrl from '../assets/leftwalking.png';
 import doorUrl from '../assets/door.png';
 import treeUrl from '../assets/tree.png';
 import bushUrl from '../assets/bush.png';
@@ -410,14 +409,14 @@ function drawLibraryBackground() {
 
 // ---- Flower shop ----
 
-const SHOP = { x: 240, w: 800, bottom: 390, door: { x: 565, w: 150 } };
+const SHOP = { x: 300, w: 680, bottom: 390, door: { x: 565, w: 150 } };
 const SHOP_PLAZA_Y = 440;
 const SHOP_SHELF_BOTTOM = 206;
 const SHOP_WALL_SHELF_SPECS = [
-  { frame: 'flowerShelf', x: 282, h: 150 },
-  { frame: 'flowerShelf', x: 420, h: 150 },
-  { frame: 'flowerShelf', x: 720, h: 150 },
-  { frame: 'flowerShelf', x: 858, h: 150 },
+  { frame: 'flowerShelf', x: 330, h: 150 },
+  { frame: 'flowerShelf', x: 466, h: 150 },
+  { frame: 'flowerShelf', x: 674, h: 150 },
+  { frame: 'flowerShelf', x: 810, h: 150 },
 ];
 let shopWallShelves = [];
 
@@ -430,15 +429,14 @@ const SHOP_WALKABLE = [
 
 const SHOP_ITEMS = [
   // inside
-  { frame: 'cashRegister', x: 300, y: 235, h: 100, hits: [[0.02, 0.5, 0.96, 0.5]] },
-  { frame: 'flowerPots', x: 860, y: 225, h: 120, hits: [[0.05, 0.55, 0.9, 0.45]] },
-  { frame: 'flowerPots', x: 395, y: 330, h: 90, hits: [[0.05, 0.55, 0.9, 0.45]] },
-  { s: 'plant_large', x: 290, y: 330, ground: true },
-  { s: 'plant_large', x: 960, y: 320, ground: true },
+  { frame: 'cashRegister', x: 345, y: 235, h: 100, hits: [[0.02, 0.5, 0.96, 0.5]] },
+  { frame: 'flowerPots', x: 820, y: 225, h: 120, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { s: 'plant_large', x: 335, y: 320, ground: true },
+  { s: 'plant_large', x: 915, y: 320, ground: true },
   { s: 'plant_flower', x: 790, y: 330, ground: true },
   // outside: tent, sign, pots, seating
   { frame: 'flowerTent', x: 800, y: 365, h: 210, hits: [[0.03, 0.5, 0.94, 0.5]] },
-  { frame: 'flowerPost', x: 100, y: 310, h: 170, hits: [[0.02, 0.8, 0.25, 0.2]] },
+  { frame: 'flowerPost', x: SHOP.x - 62, y: 230, h: 90, hits: [] },
   { frame: 'flowerPots', x: 440, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
   { frame: 'flowerPots', x: 1090, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
   { s: 'table_chairs_cup', x: 290, y: 470, ground: true },
@@ -477,7 +475,7 @@ function drawShopBackground() {
   drawFrame(frames.post, door.x + door.w, SHOP.bottom, 26, WALL_WAINSCOT_H);
 
   const win = frames.window;
-  const winW = 70;
+  const winW = 60;
   const winH = Math.round(winW * (win.sh / win.sw));
   ctx.drawImage(win.img, win.sx, win.sy, win.sw, win.sh, 640 - winW / 2, 36, winW, winH);
 
@@ -556,12 +554,16 @@ const PLAYER_SPEED = 170;
 const FEET_HALF_W = 12;
 const FEET_H = 8;
 
+const WALK_SHEETS = { left: { url: walkLeftUrl, mirror: false }, right: { url: walkLeftUrl, mirror: true } };
+const WALK_CELLS = 3;
+const WALK_CYCLE = [0, 1, 2, 1];
+const WALK_FPS = 9;
+const walkSheets = {};
+
 const PLAYER_URLS = {
   standing: standingUrl,
   up: moveUpUrl,
   down: moveDownUrl,
-  left: moveLeftUrl,
-  right: moveRightUrl,
   door: doorUrl,
   tree: treeUrl,
   bush: bushUrl,
@@ -644,6 +646,66 @@ function loadFrame(url) {
   });
 }
 
+function loadWalkSheet({ url, mirror }) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const cx = c.getContext('2d');
+      if (mirror) { cx.translate(c.width, 0); cx.scale(-1, 1); }
+      cx.drawImage(img, 0, 0);
+      const data = cx.getImageData(0, 0, c.width, c.height).data;
+
+      // find each figure as a run of non-empty columns separated by a wide gap
+      const colHasInk = new Array(c.width).fill(false);
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          if (data[(y * c.width + x) * 4 + 3] > 16) colHasInk[x] = true;
+        }
+      }
+      const runs = [];
+      let start = -1;
+      let lastInk = -1;
+      for (let x = 0; x < c.width; x++) {
+        if (!colHasInk[x]) continue;
+        if (start === -1) start = x;
+        else if (x - lastInk > 30) { runs.push([start, lastInk]); start = x; }
+        lastInk = x;
+      }
+      if (start !== -1) runs.push([start, lastInk]);
+      if (runs.length !== WALK_CELLS) { reject(new Error(`Expected ${WALK_CELLS} walk frames in ${url}, found ${runs.length}`)); return; }
+
+      const boxes = runs.map(([x0, x1]) => {
+        let minY = c.height, maxY = -1, sumX = 0, n = 0;
+        for (let y = 0; y < c.height; y++) {
+          for (let x = x0; x <= x1; x++) {
+            if (data[(y * c.width + x) * 4 + 3] <= 16) continue;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            sumX += x;
+            n++;
+          }
+        }
+        return { x0, x1, minY, maxY, mx: sumX / n };
+      });
+      const halfW = Math.ceil(Math.max(...boxes.map((b) => Math.max(b.mx - b.x0, b.x1 - b.mx))) + 1);
+      const scale = PLAYER_HEIGHT / Math.max(...boxes.map((b) => b.maxY - b.minY + 1));
+      resolve(boxes.map((b) => ({
+        img: c,
+        sx: Math.round(b.mx) - halfW,
+        sy: b.minY,
+        sw: halfW * 2,
+        sh: b.maxY - b.minY + 1,
+        scale,
+      })));
+    };
+    img.onerror = () => reject(new Error(`Failed to load walk sheet: ${url}`));
+    img.src = url;
+  });
+}
+
 async function loadPlayerFrames() {
   grassImage = await new Promise((resolve, reject) => {
     const img = new Image();
@@ -651,6 +713,9 @@ async function loadPlayerFrames() {
     img.onerror = () => reject(new Error('Failed to load grass'));
     img.src = grassUrl;
   });
+  await Promise.all(Object.entries(WALK_SHEETS).map(async ([dir, sheet]) => {
+    walkSheets[dir] = await loadWalkSheet(sheet);
+  }));
   await Promise.all(Object.entries(PLAYER_URLS).map(async ([name, url]) => {
     frames[name] = await loadFrame(url);
   }));
@@ -775,18 +840,20 @@ function drawPlayer() {
   let frame = frames.standing;
   let flip = false;
   let bob = 0;
+  const side = player.facing === 'left' || player.facing === 'right';
 
-  if (player.moving) {
+  if (side) {
+    const cells = walkSheets[player.facing];
+    frame = player.moving ? cells[WALK_CYCLE[Math.floor(player.t * WALK_FPS) % WALK_CYCLE.length]] : cells[1];
+  } else if (player.moving) {
     frame = frames[player.facing];
     bob = -Math.abs(Math.sin(player.t * 11)) * 3;
-    if (player.facing === 'up' || player.facing === 'down') {
-      flip = Math.floor(player.t * 5) % 2 === 1;
-    }
+    flip = Math.floor(player.t * 5) % 2 === 1;
   } else if (player.facing === 'up') {
     frame = frames.up;
   }
 
-  const scale = PLAYER_HEIGHT / frames.standing.sh;
+  const scale = frame.scale ?? PLAYER_HEIGHT / frame.sh;
   const dw = frame.sw * scale;
   const dh = frame.sh * scale;
   const px = Math.round(player.x);
