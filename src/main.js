@@ -21,12 +21,16 @@ import bookshelfTallUrl from '../assets/tallbookshelf.png';
 import flowerShelfUrl from '../assets/flowershelf.png';
 import cashRegisterUrl from '../assets/cashregister.png';
 import flowerPotsUrl from '../assets/flowerpots.png';
+import longerFlowerUrl from '../assets/longerflower.png';
 import flowerPostUrl from '../assets/flowerpost.png';
 import flowerTentUrl from '../assets/flowertent.png';
 import fountainUrl from '../assets/fountain.png';
 import slideUrl from '../assets/slide.png';
 import wildflowersUrl from '../assets/wildflowers.png';
 import librarySignUrl from '../assets/librarysign.png';
+import coinUrl from '../assets/coin.png';
+import sunUrl from '../assets/sun.png';
+import moonUrl from '../assets/Moon.png';
 
 const canvas = document.getElementById('game');
 const screen = canvas.getContext('2d');
@@ -413,9 +417,7 @@ const SHOP = { x: 300, w: 680, bottom: 390, door: { x: 565, w: 150 } };
 const SHOP_PLAZA_Y = 440;
 const SHOP_SHELF_BOTTOM = 206;
 const SHOP_WALL_SHELF_SPECS = [
-  { frame: 'flowerShelf', x: 330, h: 150 },
-  { frame: 'flowerShelf', x: 466, h: 150 },
-  { frame: 'flowerShelf', x: 674, h: 150 },
+  { frame: 'flowerShelf', x: 360, h: 150 },
   { frame: 'flowerShelf', x: 810, h: 150 },
 ];
 let shopWallShelves = [];
@@ -430,7 +432,7 @@ const SHOP_WALKABLE = [
 const SHOP_ITEMS = [
   // inside
   { frame: 'cashRegister', x: 345, y: 235, h: 100, hits: [[0.02, 0.5, 0.96, 0.5]] },
-  { frame: 'flowerPots', x: 820, y: 225, h: 120, hits: [[0.05, 0.55, 0.9, 0.45]] },
+  { frame: 'longerFlower', x: 512, y: 100, h: 106, hits: [] },
   { s: 'plant_large', x: 335, y: 320, ground: true },
   { s: 'plant_large', x: 915, y: 320, ground: true },
   { s: 'plant_flower', x: 790, y: 330, ground: true },
@@ -582,12 +584,16 @@ const PLAYER_URLS = {
   flowerShelf: flowerShelfUrl,
   cashRegister: cashRegisterUrl,
   flowerPots: flowerPotsUrl,
+  longerFlower: longerFlowerUrl,
   flowerPost: flowerPostUrl,
   flowerTent: flowerTentUrl,
   fountain: fountainUrl,
   slide: slideUrl,
   wildflowers: wildflowersUrl,
   librarySign: librarySignUrl,
+  coin: coinUrl,
+  sun: sunUrl,
+  moon: moonUrl,
 };
 let grassImage = null;
 const frames = {};
@@ -985,9 +991,174 @@ function buildScenes() {
   };
 
   scene = scenes.cafe;
+  spawnCoins();
 }
 
-function render() {
+// ---- Clock, coins, HUD ----
+
+const COIN_VALUE = 10;
+const COINS_PER_SCENE = 6;
+const DAY_START = 6 * 60;
+const DAY_END = 26 * 60;
+const CLOCK_RATE = 10 / 7; // game minutes per real second
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const SAVE_KEY = 'moonlightCafeSave';
+
+const game = { coins: 0, day: 1, minutes: 9 * 60 + 30, coinBump: 0 };
+const pops = [];
+let saveTimer = 0;
+
+try {
+  const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+  if (saved) {
+    game.coins = saved.coins | 0;
+    game.day = Math.max(1, saved.day | 0);
+    game.minutes = Math.min(Math.max(saved.minutes || DAY_START, DAY_START), DAY_END - 1);
+  }
+} catch { /* no saved game */ }
+
+function saveGame() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ coins: game.coins, day: game.day, minutes: Math.floor(game.minutes) }));
+  } catch { /* storage unavailable */ }
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function spawnCoins() {
+  const active = scene;
+  Object.keys(scenes).forEach((name, i) => {
+    scene = scenes[name];
+    const rand = mulberry32(game.day * 7919 + i * 104729);
+    const coins = [];
+    for (let tries = 0; tries < 600 && coins.length < COINS_PER_SCENE; tries++) {
+      const x = 70 + rand() * (W - 140);
+      const y = 90 + rand() * (H - 190);
+      const clear = [[0, 0], [-16, 0], [16, 0], [0, -14], [0, 14]].every(([dx, dy]) => !blocked(x + dx, y + dy));
+      if (!clear || coins.some((c) => Math.hypot(c.x - x, c.y - y) < 150)) continue;
+      coins.push({ x, y, phase: rand() * Math.PI * 2, got: false });
+    }
+    scene.coins = coins;
+  });
+  scene = active;
+}
+
+function updateGame(dt) {
+  game.minutes += CLOCK_RATE * dt;
+  if (game.minutes >= DAY_END) {
+    game.day += 1;
+    game.minutes = DAY_START;
+    spawnCoins();
+    saveGame();
+  }
+  game.coinBump = Math.max(0, game.coinBump - dt * 4);
+
+  for (const c of scene.coins) {
+    if (c.got) continue;
+    if (Math.abs(c.x - player.x) < 26 && Math.abs(c.y - player.y) < 22) {
+      c.got = true;
+      game.coins += COIN_VALUE;
+      game.coinBump = 1;
+      pops.push({ x: c.x, y: c.y - 30, t: 0 });
+      saveGame();
+    }
+  }
+  for (const p of pops) p.t += dt;
+  while (pops.length && pops[0].t > 0.9) pops.shift();
+
+  saveTimer += dt;
+  if (saveTimer > 5) { saveTimer = 0; saveGame(); }
+}
+
+function drawIcon(name, cx, cy, h, w = null) {
+  const f = frames[name];
+  const dh = h;
+  const dw = w ?? Math.round(h * (f.sw / f.sh));
+  ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, Math.round(cx - dw / 2), Math.round(cy - dh / 2), dw, dh);
+}
+
+function drawCoin(c, time) {
+  const bob = Math.sin(time * 3 + c.phase) * 3;
+  const spin = Math.abs(Math.cos(time * 3.2 + c.phase));
+  const cx = Math.round(c.x);
+  const cy = Math.round(c.y - 20 + bob);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+  ctx.beginPath();
+  ctx.ellipse(cx, Math.round(c.y), 9, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  drawIcon('coin', cx, cy, 24, Math.max(5, Math.round(24 * spin)));
+}
+
+function drawPanel(x, y, w, h) {
+  ctx.fillStyle = '#3a2112';
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill();
+  ctx.fillStyle = '#a8672c';
+  ctx.beginPath(); ctx.roundRect(x + 2, y + 2, w - 4, h - 4, 6); ctx.fill();
+  ctx.fillStyle = '#f3dba2';
+  ctx.beginPath(); ctx.roundRect(x + 5, y + 5, w - 10, h - 10, 4); ctx.fill();
+}
+
+function drawHud() {
+  const minutes = Math.floor(game.minutes / 10) * 10;
+  const hour = Math.floor(minutes / 60) % 24;
+  const mm = String(minutes % 60).padStart(2, '0');
+  const timeText = `${hour % 12 || 12}:${mm} ${hour < 12 ? 'AM' : 'PM'}`;
+  const dayText = `${WEEKDAYS[(game.day - 1) % 7]} ${((game.day - 1) % 28) + 1}`;
+  const isDay = game.minutes >= 6 * 60 && game.minutes < 19 * 60;
+
+  const pw = 268;
+  const ph = 50;
+  const px = W - pw - 14;
+  drawPanel(px, 12, pw, ph);
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 19px "Courier New", monospace';
+  ctx.fillStyle = '#3a2112';
+  ctx.textAlign = 'left';
+  ctx.fillText(dayText, px + 18, 38);
+  drawIcon(isDay ? 'sun' : 'moon', px + 120, 37, 40);
+  ctx.textAlign = 'right';
+  ctx.fillText(timeText, px + pw - 16, 38);
+
+  const cw = 176;
+  const ch = 48;
+  const cx0 = W - cw - 14;
+  const bump = Math.round(game.coinBump * 3);
+  drawPanel(cx0, 68 - bump, cw, ch);
+  drawIcon('coin', cx0 + 32, 92 - bump, 34);
+  ctx.fillStyle = '#3a2112';
+  ctx.textAlign = 'right';
+  ctx.fillText(String(game.coins), cx0 + cw - 18, 93 - bump);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawPops() {
+  ctx.font = 'bold 16px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const p of pops) {
+    const k = p.t / 0.9;
+    ctx.globalAlpha = 1 - k * k;
+    ctx.fillStyle = '#3a2112';
+    ctx.fillText(`+${COIN_VALUE}`, p.x + 1, p.y - k * 26 + 1);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(`+${COIN_VALUE}`, p.x, p.y - k * 26);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function render(time) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(scene.bg, 0, 0);
@@ -999,12 +1170,17 @@ function render() {
       ctx.drawImage(it.img, Math.round(it.x), Math.round(it.y), it.w, it.h);
     },
   }));
+  for (const c of scene.coins) {
+    if (!c.got) drawables.push({ bottom: c.y, draw: () => drawCoin(c, time / 1000) });
+  }
   drawables.push({ bottom: player.y, draw: drawPlayer });
   drawables.sort((a, b) => a.bottom - b.bottom);
   for (const d of drawables) d.draw();
 
+  drawPops();
   if (showHitboxes) drawHitboxes();
   drawFade();
+  drawHud();
 }
 
 let lastTime = 0;
@@ -1012,7 +1188,8 @@ function frame(time) {
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   updatePlayer(dt);
-  render();
+  updateGame(dt);
+  render(time);
   requestAnimationFrame(frame);
 }
 
