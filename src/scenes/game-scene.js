@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld } from './game-world.js';
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
+import { getNpcDialogue } from '../game-objects/npcs/npc-dialogue.js';
 import { SCENE_KEYS } from './scene-keys.js';
 import { TASKS } from '../common/tasks.js';
 import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
@@ -8,6 +9,12 @@ import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-ligh
 const DEPTH_UI = 10000;
 const DEPTH_DAY_NIGHT = DEPTH_UI - 2;
 const MAX_OUTDOOR_DARKNESS = 0.42;
+const DIALOG_CHOICES = [
+  { id: 'chat', label: 'Chat', icon: 'heart' },
+  { id: 'busy', label: 'What are you up to?', icon: 'clock' },
+  { id: 'about', label: 'About {name}', icon: 'bubble' },
+  { id: 'leave', label: 'Leave', icon: 'door' },
+];
 const HUD_TEXT = { color: '#3a2112', fontFamily: '"Courier New", monospace', fontStyle: 'bold' };
 const TASK_BUTTON = { x: 14, y: 12, w: 150, h: 46 };
 const TASK_PANEL = { x: 14, y: 66, w: 320, rowH: 46, rowGap: 8, header: 52, pad: 14 };
@@ -118,9 +125,133 @@ export class GameScene extends Phaser.Scene {
       const sprite = this.add.image(npc.x, npc.y, this.getNpcTexture(frame))
         .setOrigin(0.5, 1)
         .setDisplaySize(width, npc.displayHeight)
-        .setDepth(npc.y);
+        .setDepth(npc.y)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.openDialog(npc));
       this.npcSprites.set(npc.id, sprite);
     }
+  }
+
+  openDialog(npc) {
+    if (this.dialog) return;
+    this.dialog = { npc, container: null };
+    npc.paused = true;
+    npc.moving = false;
+    const { player } = this.world;
+    const dx = player.x - npc.x;
+    const dy = player.y - npc.y;
+    npc.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    this.showDialogMenu();
+  }
+
+  closeDialog() {
+    if (!this.dialog) return;
+    this.dialog.container.destroy(true);
+    this.dialog.npc.paused = false;
+    this.dialog = null;
+  }
+
+  resetDialogContainer() {
+    if (this.dialog.container) this.dialog.container.destroy(true);
+    this.dialog.container = this.add.container(0, 0).setDepth(DEPTH_UI + 2);
+    return this.dialog.container;
+  }
+
+  showDialogMenu() {
+    const { npc } = this.dialog;
+    const container = this.resetDialogContainer();
+    const w = 270;
+    const rowH = 34;
+    const gap = 6;
+    const pad = 12;
+    const h = pad * 2 + DIALOG_CHOICES.length * rowH + (DIALOG_CHOICES.length - 1) * gap;
+    const x = Phaser.Math.Clamp(npc.x + 24, 8, this.scale.width - w - 8);
+    const y = Phaser.Math.Clamp(npc.y - 30, 44, this.scale.height - h - 8);
+
+    const background = this.add.graphics();
+    this.drawHudPanel(background, x + 8, y - 34, 120, 40);
+    this.drawHudPanel(background, x, y, w, h);
+    container.add(background);
+    container.add(this.add.text(x + 68, y - 18, npc.name, { ...HUD_TEXT, fontSize: '17px' }).setOrigin(0.5));
+
+    DIALOG_CHOICES.forEach((choice, index) => {
+      const rowX = x + pad;
+      const rowY = y + pad + index * (rowH + gap);
+      const rowW = w - pad * 2;
+      const row = this.add.graphics();
+      const arrow = this.add.graphics().setVisible(false);
+      arrow.fillStyle(0x3a2112, 1).fillTriangle(rowX - 6, rowY + 10, rowX - 6, rowY + 24, rowX + 4, rowY + 17);
+      const drawRow = (hover) => {
+        row.clear();
+        row.fillStyle(hover ? 0xf6c64f : 0xfff3d1, 1).fillRoundedRect(rowX, rowY, rowW, rowH, 6);
+        row.lineStyle(2, hover ? 0xa8672c : 0xd9b36b, 1).strokeRoundedRect(rowX, rowY, rowW, rowH, 6);
+        arrow.setVisible(hover);
+      };
+      drawRow(false);
+      const icon = this.add.graphics();
+      this.drawDialogIcon(icon, choice.icon, rowX + 20, rowY + rowH / 2);
+      const label = this.add.text(rowX + 40, rowY + rowH / 2, choice.label.replace('{name}', npc.name), { ...HUD_TEXT, fontSize: '15px' })
+        .setOrigin(0, 0.5);
+      const hit = this.add.rectangle(rowX, rowY, rowW, rowH, 0xffffff, 0.001)
+        .setOrigin(0)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerover', () => drawRow(true))
+        .on('pointerout', () => drawRow(false))
+        .on('pointerdown', () => this.chooseDialog(choice.id));
+      container.add([row, arrow, icon, label, hit]);
+    });
+  }
+
+  drawDialogIcon(g, kind, cx, cy) {
+    const dark = 0x3a2112;
+    if (kind === 'heart') {
+      g.fillStyle(0xd9475a, 1).fillCircle(cx - 4, cy - 3, 5).fillCircle(cx + 4, cy - 3, 5)
+        .fillTriangle(cx - 9, cy - 1, cx + 9, cy - 1, cx, cy + 9);
+    } else if (kind === 'clock') {
+      g.fillStyle(0xfff3d1, 1).fillCircle(cx, cy, 9).lineStyle(2, dark, 1).strokeCircle(cx, cy, 9);
+      g.lineStyle(2, dark, 1).beginPath().moveTo(cx, cy - 6).lineTo(cx, cy).lineTo(cx + 5, cy + 2).strokePath();
+    } else if (kind === 'bubble') {
+      g.fillStyle(0xfff3d1, 1).fillRoundedRect(cx - 10, cy - 8, 20, 14, 4)
+        .fillTriangle(cx - 6, cy + 5, cx - 2, cy + 5, cx - 6, cy + 10)
+        .lineStyle(2, dark, 1).strokeRoundedRect(cx - 10, cy - 8, 20, 14, 4);
+      g.fillStyle(dark, 1).fillCircle(cx - 5, cy - 1, 1.5).fillCircle(cx, cy - 1, 1.5).fillCircle(cx + 5, cy - 1, 1.5);
+    } else {
+      g.fillStyle(0x9b3a2a, 1).fillRoundedRect(cx - 7, cy - 10, 14, 20, 2)
+        .lineStyle(2, dark, 1).strokeRoundedRect(cx - 7, cy - 10, 14, 20, 2);
+      g.fillStyle(0xf6c64f, 1).fillCircle(cx + 3, cy, 1.5);
+    }
+  }
+
+  chooseDialog(choiceId) {
+    if (choiceId === 'leave') {
+      this.closeDialog();
+      return;
+    }
+    const { npc } = this.dialog;
+    this.showDialogLine(getNpcDialogue(npc, choiceId, this.npcManager.phase));
+  }
+
+  showDialogLine(text) {
+    const { npc } = this.dialog;
+    const container = this.resetDialogContainer();
+    const { width, height } = this.scale;
+    const w = Math.min(width - 80, 760);
+    const h = 120;
+    const x = (width - w) / 2;
+    const y = height - h - 24;
+
+    container.add(this.add.rectangle(0, 0, width, height, 0x000000, 0.001)
+      .setOrigin(0)
+      .setInteractive()
+      .on('pointerdown', () => this.showDialogMenu()));
+    const background = this.add.graphics();
+    this.drawHudPanel(background, x + 12, y - 34, 120, 40);
+    this.drawHudPanel(background, x, y, w, h);
+    container.add(background);
+    container.add(this.add.text(x + 72, y - 18, npc.name, { ...HUD_TEXT, fontSize: '17px' }).setOrigin(0.5));
+    container.add(this.add.text(x + 24, y + 22, text, { ...HUD_TEXT, fontSize: '17px', wordWrap: { width: w - 48 } }));
+    container.add(this.add.text(x + w - 20, y + h - 18, 'Click to continue', { ...HUD_TEXT, fontSize: '12px', color: '#8a5a2b' })
+      .setOrigin(1, 1));
   }
 
   createHud() {
@@ -287,6 +418,7 @@ export class GameScene extends Phaser.Scene {
       rightArrow: 'RIGHT',
     });
     this.hitboxKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
+    this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
   }
 
   createTransitionOverlay() {
@@ -385,10 +517,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    setDirectionDown('up', this.keys.up.isDown || this.keys.upArrow.isDown);
-    setDirectionDown('down', this.keys.down.isDown || this.keys.downArrow.isDown);
-    setDirectionDown('left', this.keys.left.isDown || this.keys.leftArrow.isDown);
-    setDirectionDown('right', this.keys.right.isDown || this.keys.rightArrow.isDown);
+    const frozen = Boolean(this.dialog);
+    setDirectionDown('up', !frozen && (this.keys.up.isDown || this.keys.upArrow.isDown));
+    setDirectionDown('down', !frozen && (this.keys.down.isDown || this.keys.downArrow.isDown));
+    setDirectionDown('left', !frozen && (this.keys.left.isDown || this.keys.leftArrow.isDown));
+    setDirectionDown('right', !frozen && (this.keys.right.isDown || this.keys.rightArrow.isDown));
+    if (Phaser.Input.Keyboard.JustDown(this.escapeKey) && frozen) this.closeDialog();
     if (Phaser.Input.Keyboard.JustDown(this.hitboxKey)) toggleHitboxes();
 
     updateWorld(Math.min(delta / 1000, 0.05));

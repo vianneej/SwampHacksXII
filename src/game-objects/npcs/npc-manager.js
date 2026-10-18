@@ -81,6 +81,10 @@ export function updateNpcManager(manager, gameMinutes, deltaSeconds) {
   }
 
   for (const npc of manager.npcs) {
+    if (npc.paused) {
+      npc.moving = false;
+      continue;
+    }
     if (npc.delayRemaining > 0) {
       npc.delayRemaining = Math.max(0, npc.delayRemaining - deltaSeconds);
       npc.moving = false;
