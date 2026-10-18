@@ -377,9 +377,6 @@ const SHOP_ITEMS = [
   // inside
   { frame: 'cashRegister', x: 345, y: 235, h: 100, hits: [[0.02, 0.5, 0.96, 0.5]] },
   { frame: 'longerFlower', x: 512, y: 100, h: 106, hits: [] },
-  { s: 'plant_large', x: 335, y: 320, ground: true },
-  { s: 'plant_large', x: 915, y: 320, ground: true },
-  { s: 'plant_flower', x: 790, y: 330, ground: true },
   // outside: tent, sign, pots, seating
   { frame: 'flowerTent', x: 800, y: 365, h: 210, hits: [[0.03, 0.5, 0.94, 0.5]] },
   { frame: 'flowerPost', x: SHOP.x - 62, y: 230, h: 90, hits: [] },
@@ -411,6 +408,9 @@ function drawShopBackground() {
   drawFloor(SHOP.x, right, SHOP.bottom);
   fillAt(wallUpperTile, SHOP.x, 0, SHOP.w, WALL_UPPER_H);
   fillAt(wallWainscotTile, SHOP.x, WALL_UPPER_H, SHOP.w, WALL_WAINSCOT_H);
+  drawSprite('plant_large', 335, 320);
+  drawSprite('plant_large', 915, 320);
+  drawSprite('plant_flower', 790, 330);
   for (const [x0, x1] of [[SHOP.x, door.x], [door.x + door.w, right]]) {
     fillAt(wallWainscotTile, x0, SHOP.bottom, x1 - x0, WALL_WAINSCOT_H);
     rect(x0, SHOP.bottom, x1 - x0, 3, '#a86f38');

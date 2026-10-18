@@ -4,11 +4,11 @@ import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-man
 import { getNpcDialogue } from '../game-objects/npcs/npc-dialogue.js';
 import { SCENE_KEYS } from './scene-keys.js';
 import { TASKS } from '../common/tasks.js';
-import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
+import { AREA_LIGHTING, getNightIntensity, createNightOverlay, MAX_OUTDOOR_DARKNESS} from '../game-objects/day-night-lighting.js';
 
 const DEPTH_UI = 10000;
 const DEPTH_DAY_NIGHT = DEPTH_UI - 2;
-const MAX_OUTDOOR_DARKNESS = 0.42;
+const ENTRANCE_GLOW_ALPHA = 0.46;
 const DIALOG_CHOICES = [
   { id: 'chat', label: 'Chat', icon: 'heart' },
   { id: 'busy', label: 'What are you up to?', icon: 'clock' },
@@ -71,29 +71,60 @@ export class GameScene extends Phaser.Scene {
   }
 
   createDayNightLayers() {
-    for (const [name, config] of Object.entries(AREA_LIGHTING)) {
-      const darkness = config.outdoorRegions.map((region) => this.add.rectangle(
-        region.x + region.width / 2,
-        region.y + region.height / 2,
-        region.width,
-        region.height,
-        0x000000,
-        0,
-      ).setDepth(DEPTH_DAY_NIGHT));
-      const glow = [];
-      for (const entrance of config.entrances) {
-        for (let step = 16; step > 0; step--) {
-          glow.push(this.add.circle(
-            entrance.x,
-            entrance.y,
-            entrance.radius * (step / 16),
-            0xffcd91,
-            0,
-          ).setDepth(DEPTH_DAY_NIGHT + 1));
-        }
-      }
-      this.dayNightLayers.set(name, { darkness, glow });
+  for (const [name, config] of Object.entries(AREA_LIGHTING)) {
+    const area = this.world.areas[name];
+    if (!area) continue;
+
+    const canvas = createNightOverlay(
+      config,
+      area.bg.width,
+      area.bg.height
+    );
+
+    const overlay = this.add
+      .image(0, 0, this.addCanvasTexture(canvas))
+      .setOrigin(0)
+      .setDepth(DEPTH_DAY_NIGHT)
+      .setAlpha(0);
+
+    this.dayNightLayers.set(name, {
+      darkness: [overlay],
+      glow: [],
+    });
+  }
+ }
+
+  createEntranceGlow(config) {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.scale.width;
+    canvas.height = this.scale.height;
+    const context = canvas.getContext('2d');
+    context.beginPath();
+    for (const region of config.outdoorRegions) {
+      context.rect(region.x, region.y, region.width, region.height);
     }
+    context.clip();
+    for (const entrance of config.entrances) {
+      const gradient = context.createRadialGradient(
+        entrance.x,
+        entrance.y,
+        0,
+        entrance.x,
+        entrance.y,
+        entrance.radius,
+      );
+      gradient.addColorStop(0, `rgba(255, 205, 145, ${ENTRANCE_GLOW_ALPHA})`);
+      gradient.addColorStop(0.55, 'rgba(255, 205, 145, 0.18)');
+      gradient.addColorStop(1, 'rgba(255, 205, 145, 0)');
+      context.fillStyle = gradient;
+      context.fillRect(
+        entrance.x - entrance.radius,
+        entrance.y - entrance.radius,
+        entrance.radius * 2,
+        entrance.radius * 2,
+      );
+    }
+    return canvas;
   }
 
   createCoins(area) {
@@ -450,17 +481,19 @@ export class GameScene extends Phaser.Scene {
       }
       const lighting = this.dayNightLayers.get(name);
       for (const shade of lighting.darkness) shade.setVisible(active);
-      for (const light of lighting.glow) light.setVisible(active);
     }
   }
 
   updateDayNight() {
     const intensity = getNightIntensity(this.world.game.minutes);
+
     this.hudSunIcon.setAlpha(1 - intensity);
     this.hudMoonIcon.setAlpha(intensity);
-    for (const { darkness, glow } of this.dayNightLayers.values()) {
-      for (const shade of darkness) shade.setFillStyle(0x000000, intensity * MAX_OUTDOOR_DARKNESS);
-      for (const light of glow) light.setFillStyle(0xffcd91, intensity * 0.004);
+
+    for (const { darkness } of this.dayNightLayers.values()) {
+      for (const overlay of darkness) {
+        overlay.setAlpha(intensity * MAX_OUTDOOR_DARKNESS);
+      }
     }
   }
 
