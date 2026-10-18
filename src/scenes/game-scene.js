@@ -3,6 +3,7 @@ import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDire
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
 import { getNpcDialogue, hasCoffeeOrder } from '../game-objects/npcs/npc-dialogue.js';
 import { SCENE_KEYS } from './scene-keys.js';
+import { startBackgroundMusic, isMusicMuted, toggleMusicMuted } from '../common/music.js';
 import { TASKS } from '../common/tasks.js';
 import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
 
@@ -30,6 +31,7 @@ export class GameScene extends Phaser.Scene {
 
   create(data) {
     if (!data.assets) throw new Error('Game assets were not provided by the preload scene.');
+    startBackgroundMusic();
     initializeWorld(data.assets);
     this.world = getWorldState();
     this.imageTextures = new WeakMap();
@@ -44,6 +46,7 @@ export class GameScene extends Phaser.Scene {
     this.createHud();
     this.createTaskPanel();
     this.createRestartButton();
+    this.createVolumeButton();
     this.createInput();
     this.createTransitionOverlay();
     this.setActiveArea(this.world.scene);
@@ -314,6 +317,39 @@ export class GameScene extends Phaser.Scene {
       .setDepth(DEPTH_UI)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => resetProgress());
+  }
+
+  createVolumeButton() {
+    const x = this.scale.width - 190 - 8 - 48 - 8 - 48;
+    const y = 68;
+    const graphics = this.add.graphics().setDepth(DEPTH_UI);
+    const draw = (muted) => {
+      graphics.clear();
+      this.drawHudPanel(graphics, x, y, 48, 48);
+      const cx = x + 20;
+      const cy = y + 24;
+      graphics.fillStyle(0x3a2112, 1)
+        .fillRect(cx - 9, cy - 4, 6, 8)
+        .fillTriangle(cx - 4, cy - 4, cx - 4, cy + 4, cx + 4, cy + 11)
+        .fillTriangle(cx - 4, cy - 4, cx + 4, cy - 11, cx + 4, cy + 11);
+      if (muted) {
+        graphics.lineStyle(3, 0x9b3a2a, 1).beginPath()
+          .moveTo(cx + 9, cy - 6).lineTo(cx + 19, cy + 6)
+          .moveTo(cx + 19, cy - 6).lineTo(cx + 9, cy + 6)
+          .strokePath();
+      } else {
+        graphics.lineStyle(3, 0x3a2112, 1);
+        graphics.beginPath().arc(cx + 5, cy, 7, Phaser.Math.DegToRad(-50), Phaser.Math.DegToRad(50), false).strokePath();
+        graphics.beginPath().arc(cx + 5, cy, 13, Phaser.Math.DegToRad(-50), Phaser.Math.DegToRad(50), false).strokePath();
+      }
+    };
+    draw(isMusicMuted());
+
+    this.add.zone(x, y, 48, 48)
+      .setOrigin(0)
+      .setDepth(DEPTH_UI)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => draw(toggleMusicMuted()));
   }
 
   drawHudPanel(graphics, x, y, w, h) {
