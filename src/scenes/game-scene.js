@@ -3,8 +3,11 @@ import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDire
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
 import { SCENE_KEYS } from './scene-keys.js';
 import { TASKS } from '../common/tasks.js';
+import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
 
 const DEPTH_UI = 10000;
+const DEPTH_DAY_NIGHT = DEPTH_UI - 2;
+const MAX_OUTDOOR_DARKNESS = 0.42;
 const HUD_TEXT = { color: '#3a2112', fontFamily: '"Courier New", monospace', fontStyle: 'bold' };
 const TASK_BUTTON = { x: 14, y: 12, w: 150, h: 46 };
 const TASK_PANEL = { x: 14, y: 66, w: 320, rowH: 46, rowGap: 8, header: 52, pad: 14 };
@@ -25,15 +28,18 @@ export class GameScene extends Phaser.Scene {
     this.frameTextures = new WeakMap();
     this.areaLayers = new Map();
     this.coinLayers = new Map();
+    this.dayNightLayers = new Map();
     this.createAreas();
     this.createNpcs(data.assets.npcFrames);
     this.createPlayer();
+    this.createDayNightLayers();
     this.createHud();
     this.createTaskPanel();
     this.createRestartButton();
     this.createInput();
     this.createTransitionOverlay();
     this.setActiveArea(this.world.scene);
+    this.updateDayNight();
   }
 
   createAreas() {
@@ -54,6 +60,32 @@ export class GameScene extends Phaser.Scene {
       const coins = this.createCoins(area);
       this.areaLayers.set(name, { background, items: itemLayers });
       this.coinLayers.set(name, coins);
+    }
+  }
+
+  createDayNightLayers() {
+    for (const [name, config] of Object.entries(AREA_LIGHTING)) {
+      const darkness = config.outdoorRegions.map((region) => this.add.rectangle(
+        region.x + region.width / 2,
+        region.y + region.height / 2,
+        region.width,
+        region.height,
+        0x000000,
+        0,
+      ).setDepth(DEPTH_DAY_NIGHT));
+      const glow = [];
+      for (const entrance of config.entrances) {
+        for (let step = 16; step > 0; step--) {
+          glow.push(this.add.circle(
+            entrance.x,
+            entrance.y,
+            entrance.radius * (step / 16),
+            0xffcd91,
+            0,
+          ).setDepth(DEPTH_DAY_NIGHT + 1));
+        }
+      }
+      this.dayNightLayers.set(name, { darkness, glow });
     }
   }
 
@@ -105,7 +137,10 @@ export class GameScene extends Phaser.Scene {
     this.dayText = this.add.text(width - 264, 26, '', style).setDepth(DEPTH_UI);
     this.timeText = this.add.text(width - 30, 26, '', style).setOrigin(1, 0).setDepth(DEPTH_UI);
     this.coinCountText = this.add.text(width - 32, 81, '', style).setOrigin(1, 0).setDepth(DEPTH_UI);
-    this.add.image(width - 162, 37, this.getFrameTexture(this.world.frames.sun))
+    this.hudSunIcon = this.add.image(width - 162, 37, this.getFrameTexture(this.world.frames.sun))
+      .setDisplaySize(40, 40)
+      .setDepth(DEPTH_UI);
+    this.hudMoonIcon = this.add.image(width - 162, 37, this.getFrameTexture(this.world.frames.moon))
       .setDisplaySize(40, 40)
       .setDepth(DEPTH_UI);
     this.hudCoinIcon = this.add.image(width - 158, 92, this.getFrameTexture(this.world.frames.coin))
@@ -278,6 +313,19 @@ export class GameScene extends Phaser.Scene {
         coin.image.setVisible(visible);
         coin.shadow.setVisible(visible);
       }
+      const lighting = this.dayNightLayers.get(name);
+      for (const shade of lighting.darkness) shade.setVisible(active);
+      for (const light of lighting.glow) light.setVisible(active);
+    }
+  }
+
+  updateDayNight() {
+    const intensity = getNightIntensity(this.world.game.minutes);
+    this.hudSunIcon.setAlpha(1 - intensity);
+    this.hudMoonIcon.setAlpha(intensity);
+    for (const { darkness, glow } of this.dayNightLayers.values()) {
+      for (const shade of darkness) shade.setFillStyle(0x000000, intensity * MAX_OUTDOOR_DARKNESS);
+      for (const light of glow) light.setFillStyle(0xffcd91, intensity * 0.004);
     }
   }
 
@@ -346,6 +394,7 @@ export class GameScene extends Phaser.Scene {
     updateWorld(Math.min(delta / 1000, 0.05));
     this.world = getWorldState();
     updateNpcManager(this.npcManager, this.world.game.minutes, Math.min(delta / 1000, 0.05));
+    this.updateDayNight();
     this.syncCoinLayers();
     this.setActiveArea(this.world.scene);
     this.updateCoins(time);

@@ -9,7 +9,7 @@ export function loadGame() {
     if (saved) {
       game.coins = saved.coins | 0;
       game.day = Math.max(1, saved.day | 0);
-      game.minutes = Math.min(Math.max(saved.minutes || 6 * 60, 6 * 60), 26 * 60 - 1);
+      game.minutes = Math.min(Math.max(saved.minutes || 5 * 60, 5 * 60), 26 * 60 - 1);
       game.tasks = sanitizeTaskProgress(saved.tasks);
     }
   } catch {

@@ -696,7 +696,7 @@ function buildScenes() {
 
 const COIN_VALUE = 10;
 const COINS_PER_SCENE = 6;
-const DAY_START = 6 * 60;
+const DAY_START = 5 * 60;
 const DAY_END = 26 * 60;
 const CLOCK_RATE = 10 / 7; // game minutes per real second
 

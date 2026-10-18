@@ -10,6 +10,7 @@ const NPC_FEET_HALF_WIDTH = 12;
 const NPC_FEET_HEIGHT = 8;
 
 export function getNpcPhase(gameMinutes) {
+  if (gameMinutes < NPC_SCHEDULE[0].startsAt) return NPC_PHASES.OVERNIGHT;
   for (let index = NPC_SCHEDULE.length - 1; index >= 0; index--) {
     if (gameMinutes >= NPC_SCHEDULE[index].startsAt) return NPC_SCHEDULE[index].phase;
   }
