@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld, addTaskProgress } from './game-world.js';
+import { COUNTER, getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld, addTaskProgress } from './game-world.js';
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
 import { getNpcDialogue, hasCoffeeOrder } from '../game-objects/npcs/npc-dialogue.js';
 import { SCENE_KEYS } from './scene-keys.js';
+import { COFFEE_ITEMS, drawCoffeeCup } from '../game-objects/coffee-menu.js';
 import { startBackgroundMusic, isMusicMuted, toggleMusicMuted } from '../common/music.js';
 import { TASKS } from '../common/tasks.js';
 import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
@@ -40,6 +41,7 @@ export class GameScene extends Phaser.Scene {
     this.coinLayers = new Map();
     this.dayNightLayers = new Map();
     this.createAreas();
+    this.createCoffeeMachine();
     this.createNpcs(data.assets.npcFrames);
     this.createPlayer();
     this.createDayNightLayers();
@@ -317,6 +319,115 @@ export class GameScene extends Phaser.Scene {
       .setDepth(DEPTH_UI)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => resetProgress());
+  }
+
+  createCoffeeMachine() {
+    // Machine bounds in the original countertop.png (2173x724), mapped onto the drawn counter.
+    const f = this.world.frames.counter;
+    const counterH = Math.round(COUNTER.w * (f.sh / f.sw));
+    const toWorldX = (px) => COUNTER.x + ((px - f.sx) / f.sw) * COUNTER.w;
+    const toWorldY = (py) => COUNTER.bottom - counterH + ((py - f.sy) / f.sh) * counterH;
+    const x = toWorldX(603);
+    const y = toWorldY(43);
+    this.coffeeZone = this.add.zone(x, y, toWorldX(913) - x, toWorldY(413) - y)
+      .setOrigin(0)
+      .setDepth(1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.openCoffeeMenu());
+  }
+
+  openCoffeeMenu() {
+    if (this.coffeeMenu || this.dialog) return;
+    const { width, height } = this.scale;
+    const cardW = 104;
+    const cardH = 112;
+    const gap = 10;
+    const cols = 5;
+    const pad = 18;
+    const header = 54;
+    const w = pad * 2 + cols * cardW + (cols - 1) * gap;
+    const h = header + 2 * cardH + gap + pad;
+    const x = (width - w) / 2;
+    const y = (height - h) / 2;
+    const container = this.add.container(0, 0).setDepth(DEPTH_UI + 2);
+    this.coffeeMenu = container;
+
+    container.add(this.add.rectangle(0, 0, width, height, 0x000000, 0.35)
+      .setOrigin(0)
+      .setInteractive()
+      .on('pointerdown', () => this.closeCoffeeMenu()));
+    const background = this.add.graphics();
+    this.drawHudPanel(background, x, y, w, h);
+    container.add(background);
+    container.add(this.add.zone(x, y, w, h).setOrigin(0).setInteractive());
+    container.add(this.add.text(x + w / 2, y + 28, 'Coffee Menu', { ...HUD_TEXT, fontSize: '24px' }).setOrigin(0.5));
+
+    const closeSize = 30;
+    const closeX = x + w - closeSize - 8;
+    const closeY = y + 8;
+    const closeButton = this.add.graphics();
+    closeButton.fillStyle(0x3a2112, 1).fillRoundedRect(closeX, closeY, closeSize, closeSize, 6);
+    closeButton.fillStyle(0xa8672c, 1).fillRoundedRect(closeX + 2, closeY + 2, closeSize - 4, closeSize - 4, 5);
+    closeButton.lineStyle(3, 0xf3dba2, 1).beginPath()
+      .moveTo(closeX + 9, closeY + 9).lineTo(closeX + closeSize - 9, closeY + closeSize - 9)
+      .moveTo(closeX + closeSize - 9, closeY + 9).lineTo(closeX + 9, closeY + closeSize - 9)
+      .strokePath();
+    container.add(closeButton);
+    container.add(this.add.zone(closeX, closeY, closeSize, closeSize)
+      .setOrigin(0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.closeCoffeeMenu()));
+
+    COFFEE_ITEMS.forEach((item, index) => {
+      const cardX = x + pad + (index % cols) * (cardW + gap);
+      const cardY = y + header + Math.floor(index / cols) * (cardH + gap);
+      const card = this.add.graphics();
+      const drawCard = (hover) => {
+        card.clear();
+        card.fillStyle(hover ? 0xf6c64f : 0xfff3d1, 1).fillRoundedRect(cardX, cardY, cardW, cardH, 8);
+        card.lineStyle(2, hover ? 0xa8672c : 0xd9b36b, 1).strokeRoundedRect(cardX, cardY, cardW, cardH, 8);
+      };
+      drawCard(false);
+      const icon = this.add.graphics();
+      drawCoffeeCup(icon, item, cardX + cardW / 2, cardY + 44);
+      const label = this.add.text(cardX + cardW / 2, cardY + cardH - 30, item.name, {
+        ...HUD_TEXT,
+        fontSize: '13px',
+        align: 'center',
+        wordWrap: { width: cardW - 10 },
+      }).setOrigin(0.5, 0);
+      const hit = this.add.rectangle(cardX, cardY, cardW, cardH, 0xffffff, 0.001)
+        .setOrigin(0)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerover', () => drawCard(true))
+        .on('pointerout', () => drawCard(false))
+        .on('pointerdown', () => this.orderCoffee(item));
+      container.add([card, icon, label, hit]);
+    });
+  }
+
+  closeCoffeeMenu() {
+    if (!this.coffeeMenu) return;
+    this.coffeeMenu.destroy(true);
+    this.coffeeMenu = null;
+  }
+
+  orderCoffee(item) {
+    this.closeCoffeeMenu();
+    const toast = this.add.text(this.scale.width / 2, this.scale.height - 90, `Ordered: ${item.name}`, {
+      ...HUD_TEXT,
+      fontSize: '20px',
+      backgroundColor: '#f3dba2',
+      padding: { x: 16, y: 10 },
+    }).setOrigin(0.5).setDepth(DEPTH_UI + 3);
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      y: toast.y - 20,
+      delay: 1200,
+      duration: 500,
+      onComplete: () => toast.destroy(),
+    });
   }
 
   createVolumeButton() {
@@ -685,12 +796,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    const frozen = Boolean(this.dialog);
+    const frozen = Boolean(this.dialog || this.coffeeMenu);
     setDirectionDown('up', !frozen && (this.keys.up.isDown || this.keys.upArrow.isDown));
     setDirectionDown('down', !frozen && (this.keys.down.isDown || this.keys.downArrow.isDown));
     setDirectionDown('left', !frozen && (this.keys.left.isDown || this.keys.leftArrow.isDown));
     setDirectionDown('right', !frozen && (this.keys.right.isDown || this.keys.rightArrow.isDown));
-    if (Phaser.Input.Keyboard.JustDown(this.escapeKey) && frozen) this.closeDialog();
+    if (Phaser.Input.Keyboard.JustDown(this.escapeKey)) {
+      if (this.coffeeMenu) this.closeCoffeeMenu();
+      else if (frozen) this.closeDialog();
+    }
+    this.coffeeZone.input.enabled = this.world.sceneName === 'cafe' && !frozen;
     if (Phaser.Input.Keyboard.JustDown(this.hitboxKey)) toggleHitboxes();
 
     updateWorld(Math.min(delta / 1000, 0.05));
