@@ -785,6 +785,7 @@ export function getWorldState() {
   return {
     areas: scenes,
     scene,
+    sceneName: Object.keys(scenes).find((name) => scenes[name] === scene),
     player,
     game,
     pops,

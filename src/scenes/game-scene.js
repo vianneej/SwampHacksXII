@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { getPlayerVisual, getWorldState, initializeWorld, setDirectionDown, toggleHitboxes, updateWorld } from './game-world.js';
+import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
 import { SCENE_KEYS } from './scene-keys.js';
 
 const DEPTH_UI = 10000;
@@ -21,6 +22,7 @@ export class GameScene extends Phaser.Scene {
     this.areaLayers = new Map();
     this.coinLayers = new Map();
     this.createAreas();
+    this.createNpcs(data.assets.npcFrames);
     this.createPlayer();
     this.createHud();
     this.createInput();
@@ -67,6 +69,20 @@ export class GameScene extends Phaser.Scene {
     this.playerShadow.setDepth(visual.y - 1);
     this.playerImage.setDepth(visual.y);
     this.debugGraphics = this.add.graphics().setDepth(DEPTH_UI - 1);
+  }
+
+  createNpcs(spriteFrames) {
+    this.npcManager = createNpcManager(spriteFrames, this.world.game.minutes, this.world.areas);
+    this.npcSprites = new Map();
+    for (const npc of this.npcManager.npcs) {
+      const frame = npc.frames[npc.facing][0];
+      const width = Math.min(npc.collisionWidth, npc.displayHeight * (frame.width / frame.height));
+      const sprite = this.add.image(npc.x, npc.y, this.getNpcTexture(frame))
+        .setOrigin(0.5, 1)
+        .setDisplaySize(width, npc.displayHeight)
+        .setDepth(npc.y);
+      this.npcSprites.set(npc.id, sprite);
+    }
   }
 
   createHud() {
@@ -168,6 +184,16 @@ export class GameScene extends Phaser.Scene {
     return key;
   }
 
+  getNpcTexture(frame) {
+    let key = this.frameTextures.get(frame);
+    if (key) return key;
+
+    key = `npc-frame-${this.textureIds++}`;
+    this.textures.addImage(key, frame);
+    this.frameTextures.set(frame, key);
+    return key;
+  }
+
   syncCoinLayers() {
     for (const [name, area] of Object.entries(this.world.areas)) {
       const coins = this.coinLayers.get(name);
@@ -191,9 +217,11 @@ export class GameScene extends Phaser.Scene {
 
     updateWorld(Math.min(delta / 1000, 0.05));
     this.world = getWorldState();
+    updateNpcManager(this.npcManager, this.world.game.minutes, Math.min(delta / 1000, 0.05));
     this.syncCoinLayers();
     this.setActiveArea(this.world.scene);
     this.updateCoins(time);
+    this.updateNpcs(time);
     this.updateAnimatedItems(time);
     this.updatePlayer();
     this.updateHud();
@@ -220,6 +248,21 @@ export class GameScene extends Phaser.Scene {
           .setPosition(coin.data.x, coin.data.y - 20 + bob)
           .setDisplaySize(24 * spin, 24);
       }
+    }
+  }
+
+  updateNpcs(time) {
+    for (const npc of this.npcManager.npcs) {
+      const sprite = this.npcSprites.get(npc.id);
+      const visible = npc.area === this.world.sceneName;
+      sprite.setVisible(visible);
+      if (!visible) continue;
+
+      const frameIndex = npc.moving ? Math.floor(time / 150) % 3 : 0;
+      const frame = npc.frames[npc.facing][frameIndex];
+      sprite.setTexture(this.getNpcTexture(frame))
+        .setPosition(npc.x, npc.y)
+        .setDepth(npc.y);
     }
   }
 

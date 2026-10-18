@@ -1,0 +1,26 @@
+struct ScheduleActivity {
+    // the time that this activity should start. Use 2 variables to track hours and minutes, or use your own struct or whatever.
+    int execTime; 
+
+    // wherever they should go to do the activity. I just image it as being the index or ID value of a location in the game world
+    int locationID; 
+
+    // whatever they should do. Again, I just image it as an index or ID of a task that is described in a list elsewhere
+    int task; 
+
+    // what they should do if this activity can't be done 
+    ScheduleActivity* onFailure; 
+};
+
+class NPCSchedule {
+    // whether or not they are following their schedule and/or update logic should be run on it. "In use" bools in classes/structs isn't very good for data locality, but this is supposed to be simple right now
+    bool isActive;
+
+    // your array of activities on the schedule
+    std::vector<ScheduleActivity> activities;
+
+    // pointer to the activity the owning NPC is currently doing. Or, store an index to the array. Whatever. Maybe linked list if you don't care about having the best performance. Linked list will help to make sure that if your list changes, the pointer still points to the correct struct.
+    ScheduleActivity* currentActivity;
+    
+};
+

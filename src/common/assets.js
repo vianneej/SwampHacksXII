@@ -92,6 +92,11 @@ const spriteUrls = import.meta.glob('../../assets/sprites/*.png', {
   query: '?url',
   import: 'default',
 });
+const npcSpriteUrls = import.meta.glob('../../assets/npcs/*/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
 
 function loadImage(url, label) {
   return new Promise((resolve, reject) => {
@@ -209,6 +214,7 @@ export async function loadAssets() {
   const images = {};
   const frames = {};
   const walkSheets = {};
+  const npcFrames = {};
 
   await Promise.all(SPRITE_NAMES.map(async (name) => {
     const url = spriteUrls[`../../assets/sprites/${name}.png`];
@@ -231,6 +237,15 @@ export async function loadAssets() {
     }),
   ]);
 
+  await Promise.all(Object.entries(npcSpriteUrls).map(async ([path, url]) => {
+    const match = path.match(/\/npcs\/([^/]+)\/([^/]+)_([0-9]+)\.png$/);
+    if (!match) throw new Error(`Unexpected NPC sprite path: ${path}`);
+    const [, character, direction, frame] = match;
+    npcFrames[character] ??= {};
+    npcFrames[character][direction] ??= [];
+    npcFrames[character][direction][Number(frame)] = await loadImage(url, `NPC sprite: ${path}`);
+  }));
+
   const fountainFrames = await Promise.all(FOUNTAIN_FRAME_URLS.map(async (url, i) => (
     cropFrame(await loadImage(url, `fountain frame ${i}`))
   )));
@@ -242,5 +257,5 @@ export async function loadAssets() {
     frames[`fountain${i}`] = { img: f.img, sx: minX, sy: minY, sw: maxX - minX, sh: maxY - minY };
   });
 
-  return { images, frames, walkSheets, grassImage };
+  return { images, frames, walkSheets, grassImage, npcFrames };
 }
