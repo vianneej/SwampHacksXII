@@ -1,9 +1,13 @@
 import Phaser from 'phaser';
-import { getPlayerVisual, getWorldState, initializeWorld, setDirectionDown, toggleHitboxes, updateWorld } from './game-world.js';
+import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld } from './game-world.js';
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
 import { SCENE_KEYS } from './scene-keys.js';
+import { TASKS } from '../common/tasks.js';
 
 const DEPTH_UI = 10000;
+const HUD_TEXT = { color: '#3a2112', fontFamily: '"Courier New", monospace', fontStyle: 'bold' };
+const TASK_BUTTON = { x: 14, y: 12, w: 150, h: 46 };
+const TASK_PANEL = { x: 14, y: 66, w: 320, rowH: 46, rowGap: 8, header: 52, pad: 14 };
 const FOUNTAIN_FRAME_MS = 180;
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -25,6 +29,8 @@ export class GameScene extends Phaser.Scene {
     this.createNpcs(data.assets.npcFrames);
     this.createPlayer();
     this.createHud();
+    this.createTaskPanel();
+    this.createRestartButton();
     this.createInput();
     this.createTransitionOverlay();
     this.setActiveArea(this.world.scene);
@@ -102,14 +108,136 @@ export class GameScene extends Phaser.Scene {
     this.add.image(width - 162, 37, this.getFrameTexture(this.world.frames.sun))
       .setDisplaySize(40, 40)
       .setDepth(DEPTH_UI);
-    this.hudWeatherIcon = this.add.image(width - 162, 92, this.getFrameTexture(this.world.frames.coin))
-      .setDisplaySize(34, 34)
-      .setDepth(DEPTH_UI);
-    this.hudWeatherIcon.setVisible(false);
     this.hudCoinIcon = this.add.image(width - 158, 92, this.getFrameTexture(this.world.frames.coin))
       .setDisplaySize(34, 34)
       .setDepth(DEPTH_UI);
     this.popTexts = [];
+  }
+
+  createRestartButton() {
+    const width = this.scale.width;
+    const x = width - 190 - 8 - 48;
+    const y = 68;
+    const graphics = this.add.graphics().setDepth(DEPTH_UI);
+    this.drawHudPanel(graphics, x, y, 48, 48);
+
+    // circular restart arrow
+    const cx = x + 24;
+    const cy = y + 24;
+    graphics.lineStyle(4, 0x3a2112, 1).beginPath()
+      .arc(cx, cy, 11, Phaser.Math.DegToRad(-60), Phaser.Math.DegToRad(250), false)
+      .strokePath();
+    const tip = Phaser.Math.DegToRad(-60);
+    const tx = cx + Math.cos(tip) * 11;
+    const ty = cy + Math.sin(tip) * 11;
+    graphics.fillStyle(0x3a2112, 1).fillTriangle(tx - 2, ty - 8, tx + 10, ty + 1, tx - 8, ty + 4);
+
+    this.add.zone(x, y, 48, 48)
+      .setOrigin(0)
+      .setDepth(DEPTH_UI)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => resetProgress());
+  }
+
+  drawHudPanel(graphics, x, y, w, h) {
+    graphics.fillStyle(0x3a2112, 1).fillRoundedRect(x, y, w, h, 8);
+    graphics.fillStyle(0xa8672c, 1).fillRoundedRect(x + 2, y + 2, w - 4, h - 4, 6);
+    graphics.fillStyle(0xf3dba2, 1).fillRoundedRect(x + 5, y + 5, w - 10, h - 10, 4);
+  }
+
+  createTaskPanel() {
+    const b = TASK_BUTTON;
+    const p = TASK_PANEL;
+    const panelH = p.header + TASKS.length * p.rowH + (TASKS.length - 1) * p.rowGap + p.pad;
+
+    this.taskOpen = false;
+
+    const button = this.add.graphics().setDepth(DEPTH_UI);
+    this.drawHudPanel(button, b.x, b.y, b.w, b.h);
+    // clipboard icon
+    button.fillStyle(0x3a2112, 1).fillRoundedRect(b.x + 14, b.y + 9, 22, 28, 3);
+    button.fillStyle(0xfff3d1, 1).fillRect(b.x + 17, b.y + 14, 16, 20);
+    button.fillStyle(0xa8672c, 1).fillRect(b.x + 20, b.y + 6, 10, 6);
+    button.fillStyle(0x3a2112, 1);
+    for (const lineY of [18, 24, 30]) button.fillRect(b.x + 19, b.y + lineY, 12, 2);
+    this.add.text(b.x + 46, b.y + b.h / 2, 'Tasks', { ...HUD_TEXT, fontSize: '19px' })
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTH_UI);
+    this.taskArrow = this.add.graphics().setDepth(DEPTH_UI);
+
+    const dropdown = this.add.container(0, 0).setDepth(DEPTH_UI).setVisible(false);
+    const background = this.add.graphics();
+    this.drawHudPanel(background, p.x, p.y, p.w, panelH);
+    dropdown.add(background);
+    dropdown.add(this.add.text(p.x + p.w / 2, p.y + 28, "Today's Tasks", { ...HUD_TEXT, fontSize: '19px' })
+      .setOrigin(0.5));
+
+    this.taskRows = TASKS.map((task, index) => {
+      const x = p.x + 12;
+      const y = p.y + p.header + index * (p.rowH + p.rowGap);
+      const w = p.w - 24;
+      background.fillStyle(0xfff3d1, 1).fillRoundedRect(x, y, w, p.rowH, 8);
+      background.lineStyle(2, 0xd9b36b, 1).strokeRoundedRect(x, y, w, p.rowH, 8);
+      const hasBar = task.goal > 1;
+      const label = this.add.text(x + 46, y + (hasBar ? 6 : p.rowH / 2), task.label, { ...HUD_TEXT, fontSize: '15px' })
+        .setOrigin(0, hasBar ? 0 : 0.5);
+      const count = this.add.text(x + w - 12, y + p.rowH / 2, '', { ...HUD_TEXT, fontSize: '15px' })
+        .setOrigin(1, 0.5);
+      dropdown.add([label, count]);
+      return { task, x, y, w, label, count };
+    });
+    this.taskProgress = this.add.graphics();
+    dropdown.add(this.taskProgress);
+    this.taskDropdown = dropdown;
+
+    this.add.zone(b.x, b.y, b.w, b.h)
+      .setOrigin(0)
+      .setDepth(DEPTH_UI)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        this.taskOpen = !this.taskOpen;
+        this.taskDropdown.setVisible(this.taskOpen);
+      });
+  }
+
+  updateTaskPanel() {
+    const b = TASK_BUTTON;
+    const cx = b.x + b.w - 20;
+    const cy = b.y + b.h / 2;
+    this.taskArrow.clear().fillStyle(0x3a2112, 1);
+    if (this.taskOpen) this.taskArrow.fillTriangle(cx - 6, cy + 3, cx + 6, cy + 3, cx, cy - 4);
+    else this.taskArrow.fillTriangle(cx - 6, cy - 3, cx + 6, cy - 3, cx, cy + 4);
+
+    if (!this.taskOpen) return;
+    const { tasks } = this.world.game;
+    const g = this.taskProgress.clear();
+    for (const row of this.taskRows) {
+      const value = tasks[row.task.id];
+      const done = value >= row.task.goal;
+      row.count.setText(row.task.goal > 1 ? `${value}/${row.task.goal} +${row.task.reward}` : `+${row.task.reward}`);
+      row.label.setColor(done ? '#2f6b2f' : HUD_TEXT.color);
+
+      const boxX = row.x + 12;
+      const boxY = row.y + (TASK_PANEL.rowH - 20) / 2;
+      g.fillStyle(done ? 0x6fbf4a : 0xfff3d1, 1).fillRoundedRect(boxX, boxY, 20, 20, 4);
+      g.lineStyle(2, 0x3a2112, 1).strokeRoundedRect(boxX, boxY, 20, 20, 4);
+      if (done) {
+        g.lineStyle(3, 0x1f4d1f, 1).beginPath()
+          .moveTo(boxX + 4, boxY + 10)
+          .lineTo(boxX + 9, boxY + 15)
+          .lineTo(boxX + 16, boxY + 5)
+          .strokePath();
+      }
+
+      if (row.task.goal > 1) {
+        const barX = row.x + 46;
+        const barY = row.y + 29;
+        const barW = 150;
+        g.fillStyle(0xc9c2b0, 1).fillRoundedRect(barX, barY, barW, 9, 4);
+        if (value > 0) g.fillStyle(0x5fbf4a, 1).fillRoundedRect(barX, barY, Math.max(8, barW * (value / row.task.goal)), 9, 4);
+        g.lineStyle(1, 0x3a2112, 0.6).strokeRoundedRect(barX, barY, barW, 9, 4);
+      }
+    }
   }
 
   createInput() {
@@ -225,6 +353,7 @@ export class GameScene extends Phaser.Scene {
     this.updateAnimatedItems(time);
     this.updatePlayer();
     this.updateHud();
+    this.updateTaskPanel();
     this.updatePopups();
     this.updateTransition();
     this.updateDebugGraphics();
@@ -285,13 +414,10 @@ export class GameScene extends Phaser.Scene {
     const minuteText = String(minutes % 60).padStart(2, '0');
     const timeText = `${hour % 12 || 12}:${minuteText} ${hour < 12 ? 'AM' : 'PM'}`;
     const dayText = `${WEEKDAYS[(game.day - 1) % 7]} ${((game.day - 1) % 28) + 1}`;
-    const isDay = game.minutes >= 6 * 60 && game.minutes < 19 * 60;
 
     this.dayText.setText(dayText);
     this.timeText.setText(timeText);
     this.coinCountText.setText(String(game.coins));
-    this.hudWeatherIcon.setTexture(this.getFrameTexture(isDay ? this.world.frames.sun : this.world.frames.moon));
-    this.hudWeatherIcon.setVisible(true);
     this.hudCoinIcon.setY(92 - Math.round(game.coinBump * 3));
     this.coinCountText.setY(81 - Math.round(game.coinBump * 3));
   }
@@ -315,7 +441,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       const progress = pop.t / 0.9;
-      text.setText('+10')
+      text.setText(pop.text)
         .setPosition(pop.x, pop.y - progress * 26)
         .setAlpha(1 - progress * progress)
         .setVisible(true);

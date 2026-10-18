@@ -1,6 +1,7 @@
 import { createBuildingGenerator, isBlocked } from '../game-objects/building-generator.js';
 import { loadGame, saveGame } from '../common/save-data.js';
 import { GAME_CONFIG } from '../common/config.js';
+import { TASKS, emptyTaskProgress } from '../common/tasks.js';
 
 const canvas = document.createElement('canvas');
 canvas.width = GAME_CONFIG.width;
@@ -452,13 +453,12 @@ const PARK_ITEMS = [
   { tree: true, cx: 715, bottom: 695, h: 190 },
   { tree: true, cx: 1200, bottom: 650, h: 200 },
   // fountain plaza and slide
-  { frame: 'fountain0', anim: ['fountain0', 'fountain1', 'fountain2', 'fountain3'], cx: 465, y: 440, h: 210, hits: [[0.05, 0.3, 0.9, 0.7]] },
+  { frame: 'fountain0', anim: ['fountain0', 'fountain1', 'fountain2', 'fountain3'], cx: 465, y: 425, h: 125, hits: [[0.05, 0.3, 0.9, 0.7]] },
   { frame: 'slide', x: 880, y: 520, h: 150, hits: [[0.05, 0.55, 0.9, 0.45]] },
   // benches
-  { s: 'bench', x: 160, y: 250, ground: true, hits: BENCH_HITS },
+  { s: 'bench', x: 395, y: 618, ground: true, hits: BENCH_HITS },
   { s: 'bench', x: 770, y: 250, ground: true, hits: BENCH_HITS },
   { s: 'bench', x: 1020, y: 250, ground: true, hits: BENCH_HITS },
-  { s: 'bench', x: 130, y: 435, ground: true, hits: BENCH_HITS },
   { s: 'bench', x: 780, y: 440, ground: true, hits: BENCH_HITS },
   { s: 'bench', x: 1010, y: 440, ground: true, hits: BENCH_HITS },
   // wildflowers
@@ -553,6 +553,7 @@ function updateTransition(dt) {
   if (transition.phase === 'out') {
     const { to, spawn } = transition.exit;
     scene = scenes[to];
+    addTaskProgress(to);
     Object.assign(player, spawn, { moving: false, t: 0 });
     transition.phase = 'in';
     transition.t = 0;
@@ -734,11 +735,24 @@ function spawnCoins() {
   scene = active;
 }
 
+function addTaskProgress(id) {
+  const task = TASKS.find((t) => t.id === id);
+  if (!task || game.tasks[id] >= task.goal) return;
+  game.tasks[id] += 1;
+  if (game.tasks[id] >= task.goal) {
+    game.coins += task.reward;
+    game.coinBump = 1;
+    pops.push({ x: player.x, y: player.y - 70, t: 0, text: `Task done! +${task.reward}` });
+  }
+  saveGame(game);
+}
+
 function updateGame(dt) {
   game.minutes += CLOCK_RATE * dt;
   if (game.minutes >= DAY_END) {
     game.day += 1;
     game.minutes = DAY_START;
+    game.tasks = emptyTaskProgress();
     spawnCoins();
     saveGame(game);
   }
@@ -750,7 +764,8 @@ function updateGame(dt) {
       c.got = true;
       game.coins += COIN_VALUE;
       game.coinBump = 1;
-      pops.push({ x: c.x, y: c.y - 30, t: 0 });
+      addTaskProgress('coins');
+      pops.push({ x: c.x, y: c.y - 30, t: 0, text: `+${COIN_VALUE}` });
       saveGame(game);
     }
   }
@@ -759,6 +774,15 @@ function updateGame(dt) {
 
   saveTimer += dt;
   if (saveTimer > 5) { saveTimer = 0; saveGame(game); }
+}
+
+export function resetProgress() {
+  game.coins = 0;
+  game.coinBump = 0;
+  game.tasks = emptyTaskProgress();
+  pops.length = 0;
+  spawnCoins();
+  saveGame(game);
 }
 
 export function initializeWorld(assets) {
