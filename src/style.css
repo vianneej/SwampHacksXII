@@ -7,9 +7,13 @@ html, body {
   justify-content: center;
 }
 
-#game {
+#game-container {
   width: min(100vw, calc(100vh * 16 / 9));
-  height: auto;
+  height: min(100vh, calc(100vw * 9 / 16));
   aspect-ratio: 16 / 9;
   image-rendering: pixelated;
+}
+
+#game-container canvas {
+  display: block;
 }
