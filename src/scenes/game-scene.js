@@ -117,17 +117,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   createNpcs(spriteFrames) {
-    this.npcManager = createNpcManager(spriteFrames, this.world.game.minutes, this.world.areas);
+    this.npcManager = createNpcManager(spriteFrames, this.world.game.minutes, this.world.areas, this.world.game.day);
     this.npcSprites = new Map();
     for (const npc of this.npcManager.npcs) {
-      const frame = npc.frames[npc.facing][0];
+      const frame = npc.frames.down[1];
       const width = Math.min(npc.collisionWidth, npc.displayHeight * (frame.width / frame.height));
+      const visible = npc.present && npc.area === this.world.sceneName;
       const sprite = this.add.image(npc.x, npc.y, this.getNpcTexture(frame))
         .setOrigin(0.5, 1)
         .setDisplaySize(width, npc.displayHeight)
         .setDepth(npc.y)
+        .setVisible(visible)
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => this.openDialog(npc));
+      if (!visible) sprite.disableInteractive();
       this.npcSprites.set(npc.id, sprite);
     }
   }
@@ -527,12 +530,12 @@ export class GameScene extends Phaser.Scene {
 
     updateWorld(Math.min(delta / 1000, 0.05));
     this.world = getWorldState();
-    updateNpcManager(this.npcManager, this.world.game.minutes, Math.min(delta / 1000, 0.05));
+    updateNpcManager(this.npcManager, this.world.game.minutes, Math.min(delta / 1000, 0.05), this.world.game.day);
     this.updateDayNight();
     this.syncCoinLayers();
     this.setActiveArea(this.world.scene);
     this.updateCoins(time);
-    this.updateNpcs(time);
+    this.updateNpcs();
     this.updateAnimatedItems(time);
     this.updatePlayer();
     this.updateHud();
@@ -563,20 +566,39 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  updateNpcs(time) {
-    for (const npc of this.npcManager.npcs) {
-      const sprite = this.npcSprites.get(npc.id);
-      const visible = npc.area === this.world.sceneName;
-      sprite.setVisible(visible);
-      if (!visible) continue;
+  updateNpcs() {
+  for (const npc of this.npcManager.npcs) {
+    const sprite = this.npcSprites.get(npc.id);
+    const visible = npc.present && npc.area === this.world.sceneName;
 
-      const frameIndex = npc.moving ? Math.floor(time / 150) % 3 : 0;
-      const frame = npc.frames[npc.facing][frameIndex];
-      sprite.setTexture(this.getNpcTexture(frame))
-        .setPosition(npc.x, npc.y)
-        .setDepth(npc.y);
+    sprite.setVisible(visible);
+
+    if (!visible) {
+      if (sprite.input?.enabled) sprite.disableInteractive();
+      continue;
     }
+
+    if (!sprite.input?.enabled) {
+      sprite.setInteractive({ useHandCursor: true });
+    }
+
+    const direction = npc.facing;
+    const walkCycle = [0, 1, 2, 1];
+
+    const frameIndex = npc.moving
+      ? walkCycle[
+          Math.floor(npc.walkAnimationTime / 0.15) % walkCycle.length
+        ]
+      : 1;
+
+    const frame = npc.frames[direction][frameIndex];
+
+    sprite
+      .setTexture(this.getNpcTexture(frame))
+      .setPosition(npc.x, npc.y)
+      .setDepth(npc.y);
   }
+}
 
   updatePlayer() {
     const visual = getPlayerVisual();

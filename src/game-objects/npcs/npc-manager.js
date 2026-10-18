@@ -1,27 +1,23 @@
-import { NPC_DEFINITIONS, NPC_PHASES, NPC_SCHEDULE } from './npc-schedule.js';
+import { NPC_DEFINITIONS, NPC_PHASES } from './npc-schedule.js';
 import { isBlocked } from '../building-generator.js';
 
 const NPC_SPEED = 105;
 const ARRIVAL_DISTANCE = 1;
 const NAVIGATION_STEP = 12;
 const MAX_MOVEMENT_STEP = 4;
+const DIRECTION_TIE_TOLERANCE = 0.5;
+const CAFE_WANDER_BOUNDS = { minX: 70, maxX: 870, minY: 260, maxY: 620 };
 // Match the player's feet box; sprite bounds remain reserved for NPC spacing.
 const NPC_FEET_HALF_WIDTH = 12;
 const NPC_FEET_HEIGHT = 8;
 
 export function getNpcPhase(gameMinutes) {
-  if (gameMinutes < NPC_SCHEDULE[0].startsAt) return NPC_PHASES.OVERNIGHT;
-  for (let index = NPC_SCHEDULE.length - 1; index >= 0; index--) {
-    if (gameMinutes >= NPC_SCHEDULE[index].startsAt) return NPC_SCHEDULE[index].phase;
-  }
-  return NPC_PHASES.FLOWER_SHOP;
+  if (gameMinutes >= 20 * 60 && gameMinutes < 24 * 60) return NPC_PHASES.LIBRARY;
+  if (gameMinutes >= 6 * 60 && gameMinutes < 20 * 60) return NPC_PHASES.FLOWER_SHOP;
+  return NPC_PHASES.OVERNIGHT;
 }
 
-export function createNpcManager(spriteFrames, gameMinutes, areas) {
-  const phase = getNpcPhase(gameMinutes);
-  const initialPhase = gameMinutes === NPC_SCHEDULE[0].startsAt
-    ? NPC_PHASES.OVERNIGHT
-    : phase;
+export function createNpcManager(spriteFrames, gameMinutes, areas, gameDay = 1) {
   const npcs = NPC_DEFINITIONS.map((definition) => {
     const frames = spriteFrames[definition.id];
     if (!frames) throw new Error(`Missing sprite frames for NPC "${definition.id}".`);
@@ -31,8 +27,10 @@ export function createNpcManager(spriteFrames, gameMinutes, areas) {
       }
     }
 
-    const position = definition.initialPositions[initialPhase];
-    const activity = definition.activities[initialPhase];
+    const currentEventIndex = definition.schedule.findLastIndex((event) => event.at < gameMinutes);
+    const settled = definition.schedule[currentEventIndex]?.settled;
+    const activity = settled?.activity || { type: 'stand', facing: 'down' };
+    const position = settled?.area ? settled : definition.initialPosition;
     return {
       id: definition.id,
       name: definition.name,
@@ -45,53 +43,124 @@ export function createNpcManager(spriteFrames, gameMinutes, areas) {
       y: position.y,
       facing: activity.facing || 'down',
       moving: false,
-      phase: initialPhase,
+      walkAnimationTime: 0,
+      present: settled?.present || false,
+      schedule: definition.schedule,
+      nextEventIndex: currentEventIndex + 1,
       route: [],
       routeIndex: 0,
-      patrolIndex: activity.type === 'patrol' ? 1 : 0,
+      patrolIndex: 0,
       activity,
-      mode: activity.type,
+      mode: settled?.present ? activity.type : 'stand',
       path: [],
       pathTarget: null,
       pathRetry: 0,
-      delayRemaining: 0,
+      exitsWhenRouteEnds: false,
+      wanderTarget: null,
+      wanderPauseRemaining: 0,
+      randomState: definition.id.split('').reduce((seed, character) => (
+        Math.imul(seed ^ character.charCodeAt(0), 16777619) >>> 0
+      ), 2166136261) || 1,
     };
   });
 
-  return { phase: initialPhase, npcs, areas };
+  return { day: gameDay, phase: getNpcPhase(gameMinutes), npcs, areas };
 }
 
-export function updateNpcManager(manager, gameMinutes, deltaSeconds) {
-  const nextPhase = getNpcPhase(gameMinutes);
-  if (nextPhase !== manager.phase) {
-    manager.phase = nextPhase;
+export function updateNpcManager(manager, gameMinutes, deltaSeconds, gameDay = manager.day) {
+  manager.phase = getNpcPhase(gameMinutes);
+  if (gameDay !== manager.day) {
+    manager.day = gameDay;
     for (const npc of manager.npcs) {
-      npc.phase = nextPhase;
-      npc.route = NPC_DEFINITIONS.find((definition) => definition.id === npc.id).routes[nextPhase];
-      npc.routeIndex = 0;
-      npc.activity = NPC_DEFINITIONS.find((definition) => definition.id === npc.id).activities[nextPhase];
-      npc.mode = 'route';
-      npc.moving = false;
-      npc.path = [];
-      npc.pathTarget = null;
-      npc.pathRetry = 0;
-      npc.delayRemaining = NPC_DEFINITIONS.find((definition) => definition.id === npc.id)
-        .startDelays?.[nextPhase] || 0;
+      npc.nextEventIndex = 0;
     }
   }
 
   for (const npc of manager.npcs) {
+    while (npc.nextEventIndex < npc.schedule.length
+      && npc.schedule[npc.nextEventIndex].at <= gameMinutes) {
+      const event = npc.schedule[npc.nextEventIndex];
+      if ((event.requiresArea && npc.area !== event.requiresArea)
+        || (event.requiresPresence && !npc.present)) {
+        npc.nextEventIndex++;
+        continue;
+      }
+      if (event.spawn && !canOccupy(
+        npc,
+        event.spawn.x,
+        event.spawn.y,
+        event.spawn.area,
+        manager.areas,
+        manager.npcs,
+      )) break;
+      beginScheduleEvent(npc, event);
+      npc.nextEventIndex++;
+    }
+
+    if (!npc.present) {
+      npc.moving = false;
+      continue;
+    }
     if (npc.paused) {
       npc.moving = false;
       continue;
     }
-    if (npc.delayRemaining > 0) {
-      npc.delayRemaining = Math.max(0, npc.delayRemaining - deltaSeconds);
-      npc.moving = false;
-      if (npc.delayRemaining > 0) continue;
-    }
+    const previousX = npc.x;
+    const previousY = npc.y;
+    const previousArea = npc.area;
+
     moveNpc(npc, manager, deltaSeconds);
+
+    const movedDistance = Math.hypot(
+      npc.x - previousX,
+      npc.y - previousY
+    );
+
+    // Changing areas is a teleport, so don't count it as walking.
+    npc.moving =
+      npc.area === previousArea &&
+      movedDistance > 0.01;
+
+    if (npc.moving) {
+      npc.walkAnimationTime += deltaSeconds;
+    }
   }
+}
+
+function beginScheduleEvent(npc, event) {
+  if (event.spawn) {
+    npc.area = event.spawn.area;
+    npc.x = event.spawn.x;
+    npc.y = event.spawn.y;
+    npc.present = true;
+  }
+  npc.route = event.route;
+  npc.routeIndex = 0;
+  npc.activity = event.activity;
+  npc.mode = 'route';
+  npc.moving = false;
+  npc.path = [];
+  npc.pathTarget = null;
+  npc.pathRetry = 0;
+  npc.patrolIndex = 0;
+  npc.wanderTarget = null;
+  npc.wanderPauseRemaining = 0;
+  npc.exitsWhenRouteEnds = event.exits;
+  if (event.route.length === 0) finishRoute(npc);
+}
+
+function finishRoute(npc) {
+  npc.moving = false;
+  npc.path = [];
+  npc.pathTarget = null;
+  if (npc.exitsWhenRouteEnds) {
+    npc.present = false;
+    npc.mode = 'stand';
+    return;
+  }
+  npc.mode = npc.activity.type;
+  npc.facing = npc.activity.facing || npc.facing;
+  npc.exitsWhenRouteEnds = false;
 }
 
 function moveNpc(npc, manager, deltaSeconds) {
@@ -110,13 +179,14 @@ function moveNpc(npc, manager, deltaSeconds) {
     return;
   }
 
+  if (npc.mode === 'wander') {
+    wanderNpc(npc, manager, deltaSeconds);
+    return;
+  }
+
   const waypoint = npc.route[npc.routeIndex];
   if (!waypoint) {
-    const activity = npc.activity;
-    npc.mode = activity.type;
-    npc.facing = activity.facing || npc.facing;
-    npc.moving = false;
-    if (activity.type === 'patrol') npc.patrolIndex = 1;
+    finishRoute(npc);
     return;
   }
 
@@ -136,6 +206,56 @@ function moveNpc(npc, manager, deltaSeconds) {
   moveToTarget(npc, waypoint, manager, deltaSeconds, () => {
     npc.routeIndex++;
   });
+}
+
+function wanderNpc(npc, manager, deltaSeconds) {
+  if (npc.wanderPauseRemaining > 0) {
+    npc.wanderPauseRemaining = Math.max(0, npc.wanderPauseRemaining - deltaSeconds);
+    npc.moving = false;
+    return;
+  }
+
+  if (!npc.wanderTarget) {
+    npc.wanderTarget = chooseWanderTarget(npc, manager);
+    if (!npc.wanderTarget) {
+      npc.wanderPauseRemaining = 1;
+      npc.moving = false;
+      return;
+    }
+  }
+
+  moveToTarget(npc, npc.wanderTarget, manager, deltaSeconds, () => {
+    npc.wanderTarget = null;
+    const { pauseMin = 1.5, pauseMax = 4 } = npc.activity;
+    npc.wanderPauseRemaining = pauseMin + nextRandom(npc) * (pauseMax - pauseMin);
+  });
+}
+
+function chooseWanderTarget(npc, manager) {
+  const area = manager.areas.cafe;
+  if (!area || npc.area !== 'cafe') return null;
+
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const target = {
+      area: 'cafe',
+      x: CAFE_WANDER_BOUNDS.minX + nextRandom(npc) * (CAFE_WANDER_BOUNDS.maxX - CAFE_WANDER_BOUNDS.minX),
+      y: CAFE_WANDER_BOUNDS.minY + nextRandom(npc) * (CAFE_WANDER_BOUNDS.maxY - CAFE_WANDER_BOUNDS.minY),
+    };
+    if (distance(npc, target) < 120
+      || isBlocked(area, target.x, target.y, NPC_FEET_HALF_WIDTH, NPC_FEET_HEIGHT)
+      || isNpcBlockedAt(npc, target.x, target.y, manager.npcs)) continue;
+    return target;
+  }
+  return null;
+}
+
+function nextRandom(npc) {
+  let value = (npc.randomState + 0x6d2b79f5) >>> 0;
+  npc.randomState = value;
+  value = Math.imul(value ^ (value >>> 15), value | 1);
+  value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+  npc.randomState = value >>> 0;
+  return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
 }
 
 function moveToTarget(npc, target, manager, deltaSeconds, onArrival) {
@@ -179,6 +299,8 @@ function moveToTarget(npc, target, manager, deltaSeconds, onArrival) {
 }
 
 function moveToward(npc, waypoint, area, allNpcs, deltaSeconds, onArrival) {
+  const startX = npc.x;
+  const startY = npc.y;
   const dx = waypoint.x - npc.x;
   const dy = waypoint.y - npc.y;
   const distance = Math.hypot(dx, dy);
@@ -195,9 +317,6 @@ function moveToward(npc, waypoint, area, allNpcs, deltaSeconds, onArrival) {
     return null;
   }
 
-  npc.facing = Math.abs(dx) > Math.abs(dy)
-    ? (dx < 0 ? 'left' : 'right')
-    : (dy < 0 ? 'up' : 'down');
   let remaining = Math.min(NPC_SPEED * deltaSeconds, distance);
   while (remaining > 0) {
     const step = Math.min(remaining, MAX_MOVEMENT_STEP);
@@ -205,6 +324,7 @@ function moveToward(npc, waypoint, area, allNpcs, deltaSeconds, onArrival) {
     const nextY = npc.y + (dy / distance) * step;
     const blockedBy = canMove(npc, nextX, nextY, area, allNpcs);
     if (blockedBy) {
+      setFacingFromMovement(npc, startX, startY);
       npc.moving = false;
       return blockedBy;
     }
@@ -213,12 +333,19 @@ function moveToward(npc, waypoint, area, allNpcs, deltaSeconds, onArrival) {
     remaining -= step;
   }
 
+  setFacingFromMovement(npc, startX, startY);
   npc.moving = true;
   if (Math.hypot(waypoint.x - npc.x, waypoint.y - npc.y) <= ARRIVAL_DISTANCE) {
     npc.x = waypoint.x;
     npc.y = waypoint.y;
     npc.moving = false;
     onArrival();
+  }
+
+  function setFacingFromMovement(npc, startX, startY) {
+    const dx = npc.x - startX;
+    const dy = npc.y - startY;
+    if (Math.hypot(dx, dy) > 0.01) npc.facing = getDominantDirection(dx, dy);
   }
   return null;
 }
@@ -228,7 +355,7 @@ function canOccupy(npc, x, y, areaName, areas, allNpcs) {
   if (!area || isBlocked(area, x, y, NPC_FEET_HALF_WIDTH, NPC_FEET_HEIGHT)) return false;
   const candidate = getBounds(npc, x, y);
   return allNpcs.every((other) => {
-    if (other === npc || other.area !== areaName) return true;
+    if (other === npc || !other.present || other.area !== areaName) return true;
     return !overlaps(candidate, getBounds(other, other.x, other.y));
   });
 }
@@ -245,6 +372,7 @@ function canMove(npc, nextX, nextY, area, allNpcs) {
     const candidate = getBounds(npc, x, y);
     const overlapsAnotherNpc = allNpcs.some((other) => (
       other !== npc
+      && other.present
       && other.area === npc.area
       && overlaps(candidate, getBounds(other, other.x, other.y))
     ));
@@ -310,7 +438,29 @@ function findPath(npc, target, area, allNpcs) {
   }
   path.reverse();
   if (distance(path.at(-1) || start, target) > ARRIVAL_DISTANCE) path.push(target);
-  return path;
+  return simplifyPath(npc, path, area, allNpcs);
+}
+
+function getDominantDirection(dx, dy) {
+  if (Math.abs(dx) + DIRECTION_TIE_TOLERANCE >= Math.abs(dy)) return dx < 0 ? 'left' : 'right';
+  return dy < 0 ? 'up' : 'down';
+}
+
+function simplifyPath(npc, path, area, allNpcs) {
+  const simplified = [];
+  let start = { x: npc.x, y: npc.y };
+  let index = 0;
+  while (index < path.length) {
+    let furthest = index;
+    for (let candidate = index + 1; candidate < path.length; candidate++) {
+      if (isClearSegment(npc, start, path[candidate], area, allNpcs)) furthest = candidate;
+      else break;
+    }
+    start = path[furthest];
+    simplified.push(start);
+    index = furthest + 1;
+  }
+  return simplified;
 }
 
 function pointKey(point) {
@@ -338,6 +488,7 @@ function isNpcBlockedAt(npc, x, y, allNpcs) {
   const candidate = getBounds(npc, x, y);
   return allNpcs.some((other) => (
     other !== npc
+    && other.present
     && other.area === npc.area
     && overlaps(candidate, getBounds(other, other.x, other.y))
   ));
