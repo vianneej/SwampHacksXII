@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld } from './game-world.js';
+import { getPlayerVisual, getWorldState, initializeWorld, resetProgress, setDirectionDown, toggleHitboxes, updateWorld, addTaskProgress } from './game-world.js';
 import { createNpcManager, updateNpcManager } from '../game-objects/npcs/npc-manager.js';
-import { getNpcDialogue } from '../game-objects/npcs/npc-dialogue.js';
+import { getNpcDialogue, hasCoffeeOrder } from '../game-objects/npcs/npc-dialogue.js';
 import { SCENE_KEYS } from './scene-keys.js';
 import { TASKS } from '../common/tasks.js';
 import { AREA_LIGHTING, getNightIntensity } from '../game-objects/day-night-lighting.js';
@@ -12,12 +12,13 @@ const MAX_OUTDOOR_DARKNESS = 0.42;
 const DIALOG_CHOICES = [
   { id: 'chat', label: 'Chat', icon: 'heart' },
   { id: 'busy', label: 'What are you up to?', icon: 'clock' },
+  { id: 'order', label: 'Coffee order?', icon: 'cup' },
   { id: 'about', label: 'About {name}', icon: 'bubble' },
   { id: 'leave', label: 'Leave', icon: 'door' },
 ];
 const HUD_TEXT = { color: '#3a2112', fontFamily: '"Courier New", monospace', fontStyle: 'bold' };
 const TASK_BUTTON = { x: 14, y: 12, w: 150, h: 46 };
-const TASK_PANEL = { x: 14, y: 66, w: 320, rowH: 46, rowGap: 8, header: 52, pad: 14 };
+const TASK_PANEL = { x: 14, y: 66, w: 380, rowH: 46, rowGap: 8, header: 52, pad: 14, maxVisible: 5, scrollbarW: 8 };
 const FOUNTAIN_FRAME_MS = 180;
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -167,7 +168,8 @@ export class GameScene extends Phaser.Scene {
     const rowH = 34;
     const gap = 6;
     const pad = 12;
-    const h = pad * 2 + DIALOG_CHOICES.length * rowH + (DIALOG_CHOICES.length - 1) * gap;
+    const choices = DIALOG_CHOICES.filter((choice) => choice.id !== 'order' || hasCoffeeOrder(npc));
+    const h = pad * 2 + choices.length * rowH + (choices.length - 1) * gap;
     const x = Phaser.Math.Clamp(npc.x + 24, 8, this.scale.width - w - 8);
     const y = Phaser.Math.Clamp(npc.y - 30, 44, this.scale.height - h - 8);
 
@@ -177,7 +179,7 @@ export class GameScene extends Phaser.Scene {
     container.add(background);
     container.add(this.add.text(x + 68, y - 18, npc.name, { ...HUD_TEXT, fontSize: '17px' }).setOrigin(0.5));
 
-    DIALOG_CHOICES.forEach((choice, index) => {
+    choices.forEach((choice, index) => {
       const rowX = x + pad;
       const rowY = y + pad + index * (rowH + gap);
       const rowW = w - pad * 2;
@@ -218,6 +220,11 @@ export class GameScene extends Phaser.Scene {
         .fillTriangle(cx - 6, cy + 5, cx - 2, cy + 5, cx - 6, cy + 10)
         .lineStyle(2, dark, 1).strokeRoundedRect(cx - 10, cy - 8, 20, 14, 4);
       g.fillStyle(dark, 1).fillCircle(cx - 5, cy - 1, 1.5).fillCircle(cx, cy - 1, 1.5).fillCircle(cx + 5, cy - 1, 1.5);
+    } else if (kind === 'cup') {
+      g.fillStyle(0xfff3d1, 1).fillRoundedRect(cx - 8, cy - 6, 14, 14, 3)
+        .lineStyle(2, dark, 1).strokeRoundedRect(cx - 8, cy - 6, 14, 14, 3)
+        .strokeCircle(cx + 7, cy + 1, 4);
+      g.fillStyle(0x7a4a24, 1).fillRect(cx - 6, cy - 4, 10, 4);
     } else {
       g.fillStyle(0x9b3a2a, 1).fillRoundedRect(cx - 7, cy - 10, 14, 20, 2)
         .lineStyle(2, dark, 1).strokeRoundedRect(cx - 7, cy - 10, 14, 20, 2);
@@ -231,6 +238,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const { npc } = this.dialog;
+    if (choiceId === 'order' || choiceId === 'chat') addTaskProgress(`${choiceId}-${npc.id}`);
     this.showDialogLine(getNpcDialogue(npc, choiceId, this.npcManager.phase));
   }
 
@@ -317,9 +325,12 @@ export class GameScene extends Phaser.Scene {
   createTaskPanel() {
     const b = TASK_BUTTON;
     const p = TASK_PANEL;
-    const panelH = p.header + TASKS.length * p.rowH + (TASKS.length - 1) * p.rowGap + p.pad;
 
     this.taskOpen = false;
+    this.taskScroll = 0;
+    this.taskMaxScroll = 0;
+    this.taskVisibleKey = null;
+    this.taskView = { x: p.x + 12, y: p.y + p.header, w: p.w - 24, h: 0 };
 
     const button = this.add.graphics().setDepth(DEPTH_UI);
     this.drawHudPanel(button, b.x, b.y, b.w, b.h);
@@ -335,28 +346,34 @@ export class GameScene extends Phaser.Scene {
     this.taskArrow = this.add.graphics().setDepth(DEPTH_UI);
 
     const dropdown = this.add.container(0, 0).setDepth(DEPTH_UI).setVisible(false);
-    const background = this.add.graphics();
-    this.drawHudPanel(background, p.x, p.y, p.w, panelH);
-    dropdown.add(background);
+    this.taskPanelBg = this.add.graphics();
+    dropdown.add(this.taskPanelBg);
     dropdown.add(this.add.text(p.x + p.w / 2, p.y + 28, "Today's Tasks", { ...HUD_TEXT, fontSize: '19px' })
       .setOrigin(0.5));
+    this.taskEmptyText = this.add.text(p.x + p.w / 2, p.y + p.header + 6, 'All tasks done!', { ...HUD_TEXT, fontSize: '16px', color: '#2f6b2f' })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+    dropdown.add(this.taskEmptyText);
 
-    this.taskRows = TASKS.map((task, index) => {
-      const x = p.x + 12;
-      const y = p.y + p.header + index * (p.rowH + p.rowGap);
-      const w = p.w - 24;
-      background.fillStyle(0xfff3d1, 1).fillRoundedRect(x, y, w, p.rowH, 8);
-      background.lineStyle(2, 0xd9b36b, 1).strokeRoundedRect(x, y, w, p.rowH, 8);
-      const hasBar = task.goal > 1;
-      const label = this.add.text(x + 46, y + (hasBar ? 6 : p.rowH / 2), task.label, { ...HUD_TEXT, fontSize: '15px' })
-        .setOrigin(0, hasBar ? 0 : 0.5);
-      const count = this.add.text(x + w - 12, y + p.rowH / 2, '', { ...HUD_TEXT, fontSize: '15px' })
-        .setOrigin(1, 0.5);
-      dropdown.add([label, count]);
-      return { task, x, y, w, label, count };
+    // Rows live in a clipped container that is shifted up as the list scrolls.
+    const content = this.add.container(0, 0);
+    this.taskRowBg = this.add.graphics();
+    content.add(this.taskRowBg);
+    this.taskRows = TASKS.map((task) => {
+      const label = this.add.text(0, 0, task.label, { ...HUD_TEXT, fontSize: task.goal > 1 ? '15px' : '14px' });
+      const count = this.add.text(0, 0, '', { ...HUD_TEXT, fontSize: '15px' }).setOrigin(1, 0.5);
+      content.add([label, count]);
+      return { task, x: 0, y: 0, w: 0, label, count };
     });
     this.taskProgress = this.add.graphics();
-    dropdown.add(this.taskProgress);
+    content.add(this.taskProgress);
+    this.taskMaskShape = this.make.graphics({ x: 0, y: 0, add: false });
+    content.setMask(this.taskMaskShape.createGeometryMask());
+    dropdown.add(content);
+    this.taskContent = content;
+
+    this.taskScrollbar = this.add.graphics();
+    dropdown.add(this.taskScrollbar);
     this.taskDropdown = dropdown;
 
     this.add.zone(b.x, b.y, b.w, b.h)
@@ -366,7 +383,115 @@ export class GameScene extends Phaser.Scene {
       .on('pointerdown', () => {
         this.taskOpen = !this.taskOpen;
         this.taskDropdown.setVisible(this.taskOpen);
+        this.syncTaskZones();
       });
+
+    // Drag or mouse-wheel over the panel to scroll.
+    this.taskListZone = this.add.zone(p.x, p.y, p.w, 1)
+      .setOrigin(0)
+      .setDepth(DEPTH_UI)
+      .setInteractive();
+    this.taskListZone.on('pointerdown', (pointer) => {
+      this.taskDrag = { startY: pointer.y, startScroll: this.taskScroll };
+    });
+    // Scrollbar: click the track to jump, drag the thumb to scroll.
+    this.taskBarZone = this.add.zone(this.getTaskBarX() - 6, this.taskView.y, p.scrollbarW + 12, 1)
+      .setOrigin(0)
+      .setDepth(DEPTH_UI)
+      .setInteractive({ useHandCursor: true });
+    this.taskBarZone.on('pointerdown', (pointer) => {
+      this.taskBarDrag = true;
+      this.scrollTaskBarTo(pointer.y);
+    });
+    this.input.on('pointermove', (pointer) => {
+      if (!pointer.isDown) return;
+      if (this.taskBarDrag) this.scrollTaskBarTo(pointer.y);
+      else if (this.taskDrag) this.setTaskScroll(this.taskDrag.startScroll - (pointer.y - this.taskDrag.startY));
+    });
+    this.input.on('pointerup', () => {
+      this.taskDrag = null;
+      this.taskBarDrag = false;
+    });
+    this.input.on('wheel', (pointer, over, dx, dy) => {
+      if (this.taskOpen && this.taskListZone.getBounds().contains(pointer.x, pointer.y)) {
+        this.setTaskScroll(this.taskScroll + dy * 0.5);
+      }
+    });
+
+    this.syncTaskLayout();
+  }
+
+  syncTaskZones() {
+    this.taskListZone.input.enabled = this.taskOpen;
+    this.taskBarZone.input.enabled = this.taskOpen && this.taskMaxScroll > 0;
+  }
+
+  getTaskBarX() {
+    return TASK_PANEL.x + TASK_PANEL.w - 12 - TASK_PANEL.scrollbarW - 6;
+  }
+
+  getTaskThumbH() {
+    const v = this.taskView;
+    return Math.max(24, v.h * (v.h / (v.h + this.taskMaxScroll)));
+  }
+
+  scrollTaskBarTo(pointerY) {
+    const v = this.taskView;
+    const thumbH = this.getTaskThumbH();
+    const ratio = (pointerY - v.y - thumbH / 2) / (v.h - thumbH);
+    this.setTaskScroll(ratio * this.taskMaxScroll);
+  }
+
+  setTaskScroll(value) {
+    this.taskScroll = Phaser.Math.Clamp(value, 0, this.taskMaxScroll);
+    this.taskContent.y = -this.taskScroll;
+  }
+
+  // Completed tasks are hidden, so rows are re-laid out whenever the set of open tasks changes.
+  syncTaskLayout() {
+    const { tasks } = this.world.game;
+    const open = this.taskRows.filter((row) => tasks[row.task.id] < row.task.goal);
+    const key = open.map((row) => row.task.id).join(',');
+    if (key === this.taskVisibleKey) return;
+    this.taskVisibleKey = key;
+
+    const p = TASK_PANEL;
+    const count = open.length;
+    const contentH = count ? count * p.rowH + (count - 1) * p.rowGap : 0;
+    const viewH = Math.min(contentH, p.maxVisible * p.rowH + (p.maxVisible - 1) * p.rowGap);
+    const panelH = p.header + (count ? viewH : 36) + p.pad;
+    const v = this.taskView;
+    v.h = viewH;
+    this.taskMaxScroll = contentH - viewH;
+    const rowW = v.w - (this.taskMaxScroll > 0 ? p.scrollbarW + 8 : 0);
+
+    this.taskPanelBg.clear();
+    this.drawHudPanel(this.taskPanelBg, p.x, p.y, p.w, panelH);
+    this.taskMaskShape.clear().fillStyle(0xffffff, 1).fillRect(v.x - 2, v.y, v.w + 4, viewH);
+    this.taskEmptyText.setVisible(count === 0);
+    this.taskListZone.setSize(p.w, panelH);
+    this.taskBarZone.setSize(p.scrollbarW + 12, viewH);
+
+    this.taskRowBg.clear();
+    for (const row of this.taskRows) {
+      row.label.setVisible(false);
+      row.count.setVisible(false);
+    }
+    open.forEach((row, index) => {
+      row.x = v.x;
+      row.y = v.y + index * (p.rowH + p.rowGap);
+      row.w = rowW;
+      this.taskRowBg.fillStyle(0xfff3d1, 1).fillRoundedRect(row.x, row.y, rowW, p.rowH, 8);
+      this.taskRowBg.lineStyle(2, 0xd9b36b, 1).strokeRoundedRect(row.x, row.y, rowW, p.rowH, 8);
+      const hasBar = row.task.goal > 1;
+      row.label.setVisible(true).setWordWrapWidth(rowW - 46 - 52)
+        .setOrigin(0, hasBar ? 0 : 0.5)
+        .setPosition(row.x + 46, row.y + (hasBar ? 6 : p.rowH / 2));
+      row.count.setVisible(true).setPosition(row.x + rowW - 12, row.y + p.rowH / 2);
+    });
+    this.openTaskRows = open;
+    this.setTaskScroll(this.taskScroll);
+    this.syncTaskZones();
   }
 
   updateTaskPanel() {
@@ -377,26 +502,30 @@ export class GameScene extends Phaser.Scene {
     if (this.taskOpen) this.taskArrow.fillTriangle(cx - 6, cy + 3, cx + 6, cy + 3, cx, cy - 4);
     else this.taskArrow.fillTriangle(cx - 6, cy - 3, cx + 6, cy - 3, cx, cy + 4);
 
+    this.syncTaskLayout();
     if (!this.taskOpen) return;
+
+    this.taskScrollbar.clear();
+    if (this.taskMaxScroll > 0) {
+      const v = this.taskView;
+      const trackX = this.getTaskBarX();
+      const thumbH = this.getTaskThumbH();
+      const thumbY = v.y + (v.h - thumbH) * (this.taskScroll / this.taskMaxScroll);
+      this.taskScrollbar
+        .fillStyle(0xd9b36b, 1).fillRoundedRect(trackX, v.y, TASK_PANEL.scrollbarW, v.h, 4)
+        .fillStyle(0x8a5a2b, 1).fillRoundedRect(trackX, thumbY, TASK_PANEL.scrollbarW, thumbH, 4);
+    }
+
     const { tasks } = this.world.game;
     const g = this.taskProgress.clear();
-    for (const row of this.taskRows) {
+    for (const row of this.openTaskRows) {
       const value = tasks[row.task.id];
-      const done = value >= row.task.goal;
       row.count.setText(row.task.goal > 1 ? `${value}/${row.task.goal} +${row.task.reward}` : `+${row.task.reward}`);
-      row.label.setColor(done ? '#2f6b2f' : HUD_TEXT.color);
 
       const boxX = row.x + 12;
       const boxY = row.y + (TASK_PANEL.rowH - 20) / 2;
-      g.fillStyle(done ? 0x6fbf4a : 0xfff3d1, 1).fillRoundedRect(boxX, boxY, 20, 20, 4);
+      g.fillStyle(0xfff3d1, 1).fillRoundedRect(boxX, boxY, 20, 20, 4);
       g.lineStyle(2, 0x3a2112, 1).strokeRoundedRect(boxX, boxY, 20, 20, 4);
-      if (done) {
-        g.lineStyle(3, 0x1f4d1f, 1).beginPath()
-          .moveTo(boxX + 4, boxY + 10)
-          .lineTo(boxX + 9, boxY + 15)
-          .lineTo(boxX + 16, boxY + 5)
-          .strokePath();
-      }
 
       if (row.task.goal > 1) {
         const barX = row.x + 46;

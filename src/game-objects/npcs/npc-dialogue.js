@@ -29,14 +29,28 @@ const DIALOGUE = {
   },
 };
 
+const ORDERS = {
+  remo: "The usual! A large iced americano, two shots, no sugar. I'm a creature of habit, what can I say.",
+  shelby: 'A lavender latte with oat milk, please, dear. Warm, not hot. It goes nicely with the flowers.',
+  frank: "Plain black coffee, nothing fancy. If it doesn't wake the whole neighborhood up, it's too weak.",
+  carl: "Caramel macchiato, extra caramel. And a cinnamon roll on the side if you're feeling generous.",
+  jennifer: "A cappuccino with a dusting of cinnamon. Make it a double, it's been a long day.",
+  stephen: "Cold brew, no ice. Don't ask, I just like it that way.",
+};
+
 const FALLBACK = {
   about: 'A friendly neighbor.',
   chat: ['Hello there!'],
   busy: {},
 };
 
+export function hasCoffeeOrder(npc) {
+  return npc.id in ORDERS;
+}
+
 export function getNpcDialogue(npc, choice, phase) {
   const data = DIALOGUE[npc.id] || FALLBACK;
+  if (choice === 'order') return ORDERS[npc.id];
   if (choice === 'about') return data.about;
   if (choice === 'busy') return data.busy[phase] || 'Just taking it easy today.';
   return data.chat[Math.floor(Math.random() * data.chat.length)];

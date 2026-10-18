@@ -735,7 +735,7 @@ function spawnCoins() {
   scene = active;
 }
 
-function addTaskProgress(id) {
+export function addTaskProgress(id) {
   const task = TASKS.find((t) => t.id === id);
   if (!task || game.tasks[id] >= task.goal) return;
   game.tasks[id] += 1;
