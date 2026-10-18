@@ -24,13 +24,17 @@ import flowerPotsUrl from '../../assets/flowerpots.png';
 import longerFlowerUrl from '../../assets/longerflower.png';
 import flowerPostUrl from '../../assets/flowerpost.png';
 import flowerTentUrl from '../../assets/flowertent.png';
-import fountainUrl from '../../assets/fountain.png';
+import fountainFrame0Url from '../../assets/fountainframe0.png';
+import fountainFrame1Url from '../../assets/fountainframe1.png';
+import fountainFrame2Url from '../../assets/fountainframe2.png';
+import fountainFrame3Url from '../../assets/fountainframe3.png';
 import slideUrl from '../../assets/slide.png';
 import wildflowersUrl from '../../assets/wildflowers.png';
 import librarySignUrl from '../../assets/librarysign.png';
 import coinUrl from '../../assets/coin.png';
 import sunUrl from '../../assets/sun.png';
 import moonUrl from '../../assets/Moon.png';
+import table2Url from '../../assets/table2.png';
 
 const PLAYER_HEIGHT = 72;
 const WALK_CELLS = 3;
@@ -68,7 +72,6 @@ const PLAYER_URLS = {
   longerFlower: longerFlowerUrl,
   flowerPost: flowerPostUrl,
   flowerTent: flowerTentUrl,
-  fountain: fountainUrl,
   slide: slideUrl,
   wildflowers: wildflowersUrl,
   librarySign: librarySignUrl,
@@ -76,6 +79,8 @@ const PLAYER_URLS = {
   sun: sunUrl,
   moon: moonUrl,
 };
+
+const FOUNTAIN_FRAME_URLS = [fountainFrame0Url, fountainFrame1Url, fountainFrame2Url, fountainFrame3Url];
 
 const WALK_SHEETS = {
   left: { url: walkLeftUrl, mirror: false },
@@ -120,6 +125,19 @@ function cropFrame(img) {
   }
   if (maxX < minX || maxY < minY) throw new Error('Image frame has no visible pixels');
   return { img, sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 };
+}
+
+// Fits the trimmed table2 art to the flower table's footprint, bottom-aligned.
+function buildPlainTable(frame, ref) {
+  const canvas = document.createElement('canvas');
+  canvas.width = ref.width;
+  canvas.height = ref.height;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const h = Math.round(ref.width * (frame.sh / frame.sw));
+  ctx.drawImage(frame.img, frame.sx, frame.sy, frame.sw, frame.sh, 0, ref.height - h, ref.width, h);
+  return canvas;
 }
 
 async function loadWalkSheet({ url, mirror }) {
@@ -198,6 +216,11 @@ export async function loadAssets() {
     images[name] = await loadImage(url, `sprite: ${name}`);
   }));
 
+  images.table_plain = buildPlainTable(
+    cropFrame(await loadImage(table2Url, 'table2')),
+    images.table_chairs_side,
+  );
+
   const [grassImage] = await Promise.all([
     loadImage(grassUrl, 'grass'),
     ...Object.entries(WALK_SHEETS).map(async ([direction, sheet]) => {
@@ -207,6 +230,17 @@ export async function loadAssets() {
       frames[name] = cropFrame(await loadImage(url, `player frame: ${url}`));
     }),
   ]);
+
+  const fountainFrames = await Promise.all(FOUNTAIN_FRAME_URLS.map(async (url, i) => (
+    cropFrame(await loadImage(url, `fountain frame ${i}`))
+  )));
+  const minX = Math.min(...fountainFrames.map((f) => f.sx));
+  const minY = Math.min(...fountainFrames.map((f) => f.sy));
+  const maxX = Math.max(...fountainFrames.map((f) => f.sx + f.sw));
+  const maxY = Math.max(...fountainFrames.map((f) => f.sy + f.sh));
+  fountainFrames.forEach((f, i) => {
+    frames[`fountain${i}`] = { img: f.img, sx: minX, sy: minY, sw: maxX - minX, sh: maxY - minY };
+  });
 
   return { images, frames, walkSheets, grassImage };
 }

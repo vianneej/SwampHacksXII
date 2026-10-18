@@ -45,11 +45,11 @@ const ON_SHELF = [
 
 const FURNITURE = [
   { s: 'bar', x: 130, y: 195, ground: true },
-  { s: 'table_chairs_side', x: 200, y: 400, ground: true },
+  { s: 'table_plain', x: 200, y: 400, ground: true },
   { s: 'table_chair_back', x: 540, y: 250, ground: true },
   { s: 'table_chairs_cup', x: 700, y: 290, ground: true },
   { s: 'round_table_cups', x: 740, y: 450, ground: true },
-  { s: 'table_chairs_three', x: 400, y: 440, ground: true },
+  { s: 'table_plain', x: 400, y: 440, ground: true },
   { s: 'lounge', x: 40, y: 520, ground: true },
   { s: 'plant_large', x: 38, y: 200, ground: true },
   { s: 'plant_medium', x: 38, y: 430, ground: true },
@@ -300,7 +300,7 @@ const LIBRARY_ITEMS = [
   { s: 'plant_large', x: 485, y: 120, ground: true },
   { s: 'plant_large', x: 745, y: 120, ground: true },
   { s: 'table_chairs_cup', x: 90, y: 480, ground: true },
-  { s: 'table_chairs_side', x: 290, y: 500, ground: true },
+  { s: 'table_plain', x: 290, y: 500, ground: true },
   { s: 'table_chairs_three', x: 520, y: 470, ground: true },
   { s: 'round_table_cups', x: 760, y: 490, ground: true },
   { s: 'table_chair_back', x: 870, y: 460, ground: true },
@@ -384,9 +384,9 @@ const SHOP_ITEMS = [
   { frame: 'flowerPost', x: SHOP.x - 62, y: 230, h: 90, hits: [] },
   { frame: 'flowerPots', x: 440, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
   { frame: 'flowerPots', x: 1090, y: 455, h: 100, hits: [[0.05, 0.55, 0.9, 0.45]] },
-  { s: 'table_chairs_cup', x: 290, y: 470, ground: true },
-  { s: 'round_table_cups', x: 285, y: 572, ground: true },
-  { s: 'table_chairs_side', x: 395, y: 570, ground: true },
+  { s: 'table_plain', x: 290, y: 470, ground: true },
+  { s: 'table_plain', x: 285, y: 572, ground: true },
+  { s: 'table_plain', x: 430, y: 572, ground: true },
   { s: 'bench', x: 1060, y: 610, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
   { s: 'bench', x: 910, y: 610, ground: true, hits: [[0.02, 0.4, 0.96, 0.6]] },
   { s: 'plant_flower', x: 1200, y: 560, ground: true },
@@ -452,7 +452,7 @@ const PARK_ITEMS = [
   { tree: true, cx: 715, bottom: 695, h: 190 },
   { tree: true, cx: 1200, bottom: 650, h: 200 },
   // fountain plaza and slide
-  { frame: 'fountain', cx: 465, y: 440, h: 210, hits: [[0.05, 0.3, 0.9, 0.7]] },
+  { frame: 'fountain0', anim: ['fountain0', 'fountain1', 'fountain2', 'fountain3'], cx: 465, y: 440, h: 210, hits: [[0.05, 0.3, 0.9, 0.7]] },
   { frame: 'slide', x: 880, y: 520, h: 150, hits: [[0.05, 0.55, 0.9, 0.45]] },
   // benches
   { s: 'bench', x: 160, y: 250, ground: true, hits: BENCH_HITS },
@@ -464,10 +464,10 @@ const PARK_ITEMS = [
   // wildflowers
   { frame: 'wildflowers', x: 320, y: 255, h: 58, hits: WILD_HITS },
   { frame: 'wildflowers', x: 585, y: 255, h: 58, hits: WILD_HITS },
-  { frame: 'wildflowers', x: 255, y: 520, h: 62, hits: WILD_HITS },
-  { frame: 'wildflowers', x: 625, y: 520, h: 62, hits: WILD_HITS },
-  { frame: 'wildflowers', x: 285, y: 600, h: 55, hits: WILD_HITS },
-  { frame: 'wildflowers', x: 625, y: 610, h: 55, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 165, y: 520, h: 62, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 710, y: 520, h: 62, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 190, y: 600, h: 55, hits: WILD_HITS },
+  { frame: 'wildflowers', x: 710, y: 610, h: 55, hits: WILD_HITS },
   { frame: 'wildflowers', x: 1110, y: 590, h: 60, hits: WILD_HITS },
   { frame: 'wildflowers', x: 60, y: 480, h: 58, hits: WILD_HITS },
   { frame: 'wildflowers', x: 1200, y: 360, h: 58, hits: WILD_HITS },
@@ -477,7 +477,7 @@ const PARK_ITEMS = [
 function drawParkBackground() {
   fillPattern(grassPattern, 0, 0, W, H);
   fillPattern(brickPattern, 0, PARK_PATH_Y.y, W, PARK_PATH_Y.h);
-  fillPattern(brickPattern, 310, PARK_PATH_Y.y - 20, 310, 675 - PARK_PATH_Y.y + 20);
+  fillPattern(brickPattern, 260, PARK_PATH_Y.y - 20, 410, 675 - PARK_PATH_Y.y + 20);
   fillPattern(brickVPattern, DOOR.x, 0, DOOR.w, PARK_PATH_Y.y);
 
   for (let y = 80; y <= 290; y += 52) {
@@ -485,8 +485,8 @@ function drawParkBackground() {
     drawBush(DOOR.x + DOOR.w + 14, y, 46);
   }
   for (let y = 470; y <= 680; y += 52) {
-    drawBush(298, y, 50);
-    drawBush(632, y, 50);
+    drawBush(248, y, 50);
+    drawBush(682, y, 50);
   }
   for (let x = 40; x < DOOR.x - 30; x += 56) drawBush(x, 125, 64);
   for (let x = 40; x < W; x += 64) drawBush(x, H - 2, 64);

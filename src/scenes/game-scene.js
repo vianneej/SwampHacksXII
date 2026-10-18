@@ -3,6 +3,7 @@ import { getPlayerVisual, getWorldState, initializeWorld, setDirectionDown, togg
 import { SCENE_KEYS } from './scene-keys.js';
 
 const DEPTH_UI = 10000;
+const FOUNTAIN_FRAME_MS = 180;
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export class GameScene extends Phaser.Scene {
@@ -39,7 +40,7 @@ export class GameScene extends Phaser.Scene {
           .setOrigin(0)
           .setDisplaySize(item.w, item.h)
           .setDepth(item.y + item.h);
-        return { shadow, image };
+        return { shadow, image, anim: item.anim && item.anim.map((source) => this.getImageTexture(source)) };
       });
 
       const coins = this.createCoins(area);
@@ -193,11 +194,21 @@ export class GameScene extends Phaser.Scene {
     this.syncCoinLayers();
     this.setActiveArea(this.world.scene);
     this.updateCoins(time);
+    this.updateAnimatedItems(time);
     this.updatePlayer();
     this.updateHud();
     this.updatePopups();
     this.updateTransition();
     this.updateDebugGraphics();
+  }
+
+  updateAnimatedItems(time) {
+    for (const layer of this.areaLayers.values()) {
+      for (const item of layer.items) {
+        if (!item.anim) continue;
+        item.image.setTexture(item.anim[Math.floor(time / FOUNTAIN_FRAME_MS) % item.anim.length]);
+      }
+    }
   }
 
   updateCoins(time) {

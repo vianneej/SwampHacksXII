@@ -23,6 +23,7 @@ function createItem(spec, { images, spriteSize }) {
     h: size.h,
     ground: spec.ground,
     hits,
+    anim: spec.anim,
   };
 }
 
@@ -74,7 +75,8 @@ export function createBuildingGenerator(config) {
   const parkItems = layout.park.items.map((spec) => {
     if (spec.frame) {
       const sprite = frameSprite(spec.frame, spec.h);
-      return makeItem({ ...spec, ...sprite, x: spec.cx !== undefined ? spec.cx - sprite.w / 2 : spec.x });
+      const anim = spec.anim && spec.anim.map((name) => frameSprite(name, spec.h).img);
+      return makeItem({ ...spec, ...sprite, anim, x: spec.cx !== undefined ? spec.cx - sprite.w / 2 : spec.x });
     }
     if (!spec.tree) return makeItem(spec);
     const sprite = frameSprite('tree', spec.h);
