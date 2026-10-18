@@ -34,7 +34,7 @@ const WALL_DECOR = [
   { s: 'painting', x: 775, y: 44 },
 ];
 
-const COUNTER = { x: 470, w: 420, bottom: 226, hitH: 56 };
+export const COUNTER = { x: 470, w: 420, bottom: 226, hitH: 56 };
 
 const SHELF = { x: 310, y: 112, w: 120 };
 const ON_SHELF = [
@@ -735,7 +735,7 @@ function spawnCoins() {
   scene = active;
 }
 
-function addTaskProgress(id) {
+export function addTaskProgress(id) {
   const task = TASKS.find((t) => t.id === id);
   if (!task || game.tasks[id] >= task.goal) return;
   game.tasks[id] += 1;
